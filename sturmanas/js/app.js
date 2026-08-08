@@ -218,19 +218,48 @@ async function makeRouteTo(lat, lon) {
   setRoute(r); busy(null); switchTo('route');
 }
 
+let variants = [];
 async function makeLoop() {
   const me = window.MY;
   if (!me) { toast('Nerandu tavo vietos — įjunk GPS'); locateMe(); return; }
-  busy('Ieškoma gražios kilpos…'); await tick();
   const km = +el('loopKm').value;
-  const r = router.loop(me[0], me[1], km, mode, el('pavedOnly')?.checked);
+  const paved = el('pavedOnly')?.checked;
+  // taikiniai: trumpesnis · pasirinktas · ilgesnis (+ atsarginiai, jei sutampa)
+  const targets = [Math.max(15, Math.round(km * 0.5)), km, Math.round(km * 1.7),
+                   Math.round(km * 0.75), Math.round(km * 2.3)];
+  variants = [];
+  for (let i = 0; i < targets.length && variants.length < 3; i++) {
+    busy(`Ieškoma variantų… ${Math.min(variants.length + 1, 3)}/3`); await tick();
+    const r = router.loop(me[0], me[1], targets[i], mode, paved);
+    // variantai turi realiai skirtis (bent 20 % ilgio) — kitaip tai tas pats maršrutas
+    if (r && !variants.some(v => Math.abs(v.km - r.km) / Math.max(v.km, r.km) < 0.20))
+      variants.push(r);
+  }
   busy(null);
-  if (!r) { toast('Nepavyko sudėlioti kilpos — pabandyk kitą ilgį'); return; }
-  setRoute(r);
+  if (!variants.length) { toast('Nepavyko sudėlioti kilpos — pabandyk kitą ilgį'); return; }
+  variants.sort((a, b) => a.km - b.km);
+  renderVariants(0);
+  setRoute(variants[0], true);
 }
 
-function setRoute(r) {
+function renderVariants(sel) {
+  const box = el('variants');
+  if (!box) return;
+  box.innerHTML = variants.length > 1 ? `
+    <div class="mut" style="font-size:11px;font-weight:800;letter-spacing:.08em;
+         text-transform:uppercase;margin:14px 0 8px">Variantai pagal atstumą</div>
+    ${variants.map((r, i) => variantCard(r, i, i === sel)).join('')}` : '';
+}
+window.__pick = i => {
+  if (!variants[i]) return;
+  renderVariants(i);
+  setRoute(variants[i], true);
+  el('routeOut').scrollIntoView({ behavior: 'smooth', block: 'start' });
+};
+
+function setRoute(r, keepVariants) {
   route = r;
+  if (!keepVariants) { variants = []; const vb = el('variants'); if (vb) vb.innerHTML = ''; }
   el('routeOut').innerHTML = routeCard(r);
   layerRoute.clearLayers();
   L.polyline(r.pts, { color: '#000', weight: 9, opacity: .5 }).addTo(layerRoute);
@@ -245,9 +274,67 @@ function setRoute(r) {
   map.fitBounds(L.polyline(r.pts).getBounds(), { padding: [40, 40] });
 }
 
+/** Maršruto formos brėžinys — lengvas SVG (ne žemėlapis, tad greitas). */
+function routeSvg(r, w = 96, h = 96) {
+  const pts = r.pts;
+  if (!pts || pts.length < 2) return '';
+  const step = Math.max(1, Math.floor(pts.length / 220));
+  const sub = pts.filter((_, i) => i % step === 0);
+  let minLa = 90, maxLa = -90, minLo = 180, maxLo = -180;
+  for (const [la, lo] of sub) {
+    if (la < minLa) minLa = la; if (la > maxLa) maxLa = la;
+    if (lo < minLo) minLo = lo; if (lo > maxLo) maxLo = lo;
+  }
+  const kx = Math.cos((minLa + maxLa) / 2 * Math.PI / 180);
+  const dw = Math.max(1e-6, (maxLo - minLo) * kx), dh = Math.max(1e-6, maxLa - minLa);
+  const pad = 7, sc = Math.min((w - pad * 2) / dw, (h - pad * 2) / dh);
+  const ox = (w - dw * sc) / 2, oy = (h - dh * sc) / 2;
+  const d = sub.map(([la, lo]) =>
+    `${(ox + (lo - minLo) * kx * sc).toFixed(1)},${(oy + (maxLa - la) * sc).toFixed(1)}`).join(' ');
+  const s0 = sub[0], s1 = sub[sub.length - 1];
+  const P = ([la, lo]) => [ox + (lo - minLo) * kx * sc, oy + (maxLa - la) * sc];
+  const [x0, y0] = P(s0), [x1, y1] = P(s1);
+  return `<svg viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" style="display:block">
+    <rect width="${w}" height="${h}" rx="13" fill="#0e1017"/>
+    <polyline points="${d}" fill="none" stroke="#000" stroke-width="4.5" stroke-opacity=".55"
+      stroke-linejoin="round" stroke-linecap="round"/>
+    <polyline points="${d}" fill="none" stroke="#ffb300" stroke-width="2.4"
+      stroke-linejoin="round" stroke-linecap="round"/>
+    <circle cx="${x0.toFixed(1)}" cy="${y0.toFixed(1)}" r="3.4" fill="#34c759" stroke="#fff" stroke-width="1.2"/>
+    <circle cx="${x1.toFixed(1)}" cy="${y1.toFixed(1)}" r="3.4" fill="#ff2d55" stroke="#fff" stroke-width="1.2"/>
+  </svg>`;
+}
+
+/** Vieno varianto kortelė (su brėžiniu). */
+function variantCard(r, i, active) {
+  return `<div class="road" onclick="window.__pick(${i})"
+      style="align-items:center;${active ? 'border-color:var(--amber);background:#1c1f2b' : ''}">
+    <div style="flex:none;border-radius:13px;overflow:hidden">${routeSvg(r, 84, 84)}</div>
+    <div style="min-width:0;flex:1">
+      <div class="row" style="justify-content:space-between;align-items:baseline">
+        <b style="font-size:19px" class="num">${r.km.toFixed(0)} km</b>
+        <span class="amber num" style="font-weight:800">${Math.round(r.curvPerKm)}<span
+          class="mut" style="font-size:10px;font-weight:600"> vingių/km</span></span>
+      </div>
+      <div class="mt" style="margin-top:4px">
+        <span>${fmtDur(r.timeMin)}</span>
+        <span>${r.corners.length} posūkių</span>
+      </div>
+      <div class="mt" style="margin-top:5px">
+        <span class="chip" style="${r.pavedPct > 92 ? 'color:#34c759' : ''}">${r.pavedPct}% asfalto</span>
+        ${r.bumps ? `<span class="chip">🛑 ${r.bumps}</span>` : ''}
+        ${r.cams ? `<span class="chip" style="color:#ff2d55">📷 ${r.cams}</span>` : ''}
+        ${r.tight ? `<span class="chip" style="color:#ff5e3a">${r.tight} aštrūs</span>` : ''}
+      </div>
+    </div></div>`;
+}
+
 function routeCard(r) {
   const tight = r.tight;
   return `<div class="card">
+    <div class="row" style="gap:12px;margin-bottom:12px;align-items:flex-start">
+      <div style="flex:none;border-radius:14px;overflow:hidden">${routeSvg(r, 92, 92)}</div>
+      <div style="flex:1;min-width:0">
     <div class="row" style="justify-content:space-between;margin-bottom:12px">
       <div>${r.tourName ? `<div style="font-size:13px;font-weight:800;color:var(--amber);margin-bottom:2px">
         ${r.tourEmoji} ${esc(r.tourName)}</div>` : ''}
@@ -255,6 +342,8 @@ function routeCard(r) {
         <div class="mut" style="font-size:12.5px">${fmtDur(r.timeMin)} · ${MODES[r.mode].label}</div></div>
       <div style="text-align:right"><div style="font-size:26px;font-weight:900;color:var(--amber)" class="num">${Math.round(r.curvPerKm)}</div>
         <div class="mut" style="font-size:11px">vingių/km</div></div>
+    </div>
+      </div>
     </div>
     <div class="grid4">
       ${stat(r.bumps, 'kalneliai', r.bumps ? 'warn' : 'good')}
