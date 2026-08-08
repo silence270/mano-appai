@@ -690,7 +690,8 @@ function toast(msg) {
   if (!t) { t = document.createElement('div'); t.id = '__toast';
     t.style.cssText = `position:fixed;left:50%;bottom:calc(74px + env(safe-area-inset-bottom));transform:translateX(-50%);
       background:#242938;color:#fff;padding:11px 18px;border-radius:12px;font-size:13.5px;font-weight:700;z-index:900;
-      box-shadow:0 8px 30px rgba(0,0,0,.5);border:1px solid #333a4d;max-width:88vw;text-align:center`;
+      box-shadow:0 8px 30px rgba(0,0,0,.5);border:1px solid #333a4d;max-width:88vw;text-align:center;
+      pointer-events:none;transition:opacity .3s`;
     document.body.appendChild(t); }
   t.textContent = msg; t.style.opacity = 1;
   clearTimeout(t.__h); t.__h = setTimeout(() => t.style.opacity = 0, 2600);
