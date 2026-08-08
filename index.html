@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="lt">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0a0b0f">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Mano app'ai">
+<meta name="robots" content="noindex, nofollow">
+<title>Mano app'ai</title>
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icons/icon-180.png">
+<style>
+:root{
+  --bg:#0a0b0f; --card:#161922; --line:#252a38; --ink:#eef1f8; --mut:#8f98ad; --dim:#5d6578;
+  --safe-b:env(safe-area-inset-bottom,0px); --safe-t:env(safe-area-inset-top,0px);
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{margin:0;min-height:100vh;background:
+    radial-gradient(900px 520px at 15% -8%,rgba(255,179,0,.07),transparent 60%),
+    radial-gradient(760px 460px at 100% 4%,rgba(90,150,240,.07),transparent 55%),
+    var(--bg);
+  color:var(--ink);font:16px/1.5 -apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,sans-serif;
+  -webkit-font-smoothing:antialiased;padding:calc(var(--safe-t) + 26px) 18px calc(var(--safe-b) + 34px)}
+.wrap{max-width:640px;margin:0 auto}
+header{margin-bottom:26px}
+h1{margin:0;font-size:30px;font-weight:900;letter-spacing:-.8px}
+h1 span{background:linear-gradient(96deg,#ffb300,#ff8a00);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+.sub{color:var(--mut);font-size:13.5px;font-weight:600;margin-top:5px}
+
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:13px}
+a.app{display:flex;flex-direction:column;gap:11px;padding:16px;border-radius:20px;text-decoration:none;color:inherit;
+  background:var(--card);border:1px solid var(--line);transition:transform .16s cubic-bezier(.23,1,.32,1),border-color .16s;
+  position:relative;overflow:hidden}
+a.app:active{transform:scale(.975)}
+@media(hover:hover){a.app:hover{border-color:#3d465c;transform:translateY(-2px)}}
+a.app .ic{width:54px;height:54px;border-radius:15px;flex:none;display:flex;align-items:center;justify-content:center;
+  font-size:27px;box-shadow:0 6px 18px rgba(0,0,0,.45)}
+a.app img.ic{object-fit:cover}
+a.app b{font-size:16px;font-weight:800;letter-spacing:-.25px;display:block}
+a.app .d{font-size:12.5px;color:var(--mut);line-height:1.4;margin-top:3px}
+a.app .tag{position:absolute;top:13px;right:13px;font-size:9.5px;font-weight:800;letter-spacing:.07em;
+  padding:3px 7px;border-radius:99px;background:rgba(255,179,0,.15);color:#ffb300;border:1px solid rgba(255,179,0,.3)}
+a.app.soon{opacity:.5}
+a.app.soon .tag{background:rgba(143,152,173,.14);color:var(--mut);border-color:#333a4a}
+
+h2{font-size:11.5px;font-weight:800;letter-spacing:.13em;text-transform:uppercase;color:var(--dim);
+  margin:32px 0 12px}
+footer{margin-top:34px;color:var(--dim);font-size:11.5px;line-height:1.6}
+footer b{color:var(--mut)}
+.hint{margin-top:24px;padding:13px 15px;border-radius:14px;background:rgba(255,179,0,.07);
+  border:1px solid rgba(255,179,0,.2);font-size:12.5px;color:#e8d9b4;line-height:1.5}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Mano <span>app'ai</span></h1>
+    <div class="sub">Asmeniniai įrankiai · nesusiję su VDU</div>
+  </header>
+
+  <div class="grid" id="grid"></div>
+
+  <h2>Darbo projektai</h2>
+  <div class="grid" id="work"></div>
+
+  <div class="hint" id="installHint">
+    <b>Įsidėk į pagrindinį ekraną:</b> Safari → Dalintis <b>□↑</b> → „Įtraukti į pagrindinį ekraną".
+    Kiekvieną app'ą galima įsidėti atskirai — arba šį paleidiklį.
+  </div>
+
+  <footer>
+    Duomenys ir žemėlapiai: <b>OpenStreetMap</b> (ODbL) · orai: <b>Open-Meteo</b><br>
+    Viskas veikia telefone — be paskyrų, be sekimo, be App Store.
+  </footer>
+</div>
+
+<script>
+/* ── Tavo app'ai. Naują pridėti = viena eilutė. ─────────────────────────── */
+const APPS = [
+  { name:'Šturmanas', url:'sturmanas/', icon:'sturmanas/icons/icon-192.png',
+    desc:'Ralio šturmanas Kaunui: vingiuočiausi keliai, maršrutai ir posūkiai balsu.',
+    tag:'NAUJA' },
+  { name:'Žaliasis dienoraštis', url:'augalai/', icon:'augalai/icons/icon-192.png',
+    desc:'Augalų priežiūra: laistymo grafikas, orai, priminimai.' },
+];
+
+const WORK = [
+  { name:'VDU STEAM', url:'https://steam.vdu.lt', emoji:'🎓', bg:'#1d3a63',
+    desc:'Didaktikos centras · 11 STEAM žaidimų, pamokų planai.', ext:true },
+  { name:'Komandos planas', url:'https://vdu-steam-planas.pages.dev', emoji:'📋', bg:'#3a2a5e',
+    desc:'Darbuotojų užduotys ir progresas.', ext:true },
+];
+
+const tile = a => {
+  const ic = a.icon
+    ? `<img class="ic" src="${a.icon}" alt="" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'ic',style:'background:${a.bg||'#2a2f3d'}',textContent:'${a.emoji||'▦'}'}))">`
+    : `<div class="ic" style="background:${a.bg || '#2a2f3d'}">${a.emoji || '▦'}</div>`;
+  return `<a class="app${a.soon ? ' soon' : ''}" href="${a.url}"${a.ext ? ' target="_blank" rel="noopener"' : ''}>
+    ${a.tag ? `<span class="tag">${a.tag}</span>` : ''}
+    ${ic}<div><b>${a.name}</b><div class="d">${a.desc}</div></div></a>`;
+};
+document.getElementById('grid').innerHTML = APPS.map(tile).join('');
+document.getElementById('work').innerHTML = WORK.map(tile).join('');
+
+if (matchMedia('(display-mode: standalone)').matches || navigator.standalone)
+  document.getElementById('installHint').style.display = 'none';
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+</script>
+</body>
+</html>
