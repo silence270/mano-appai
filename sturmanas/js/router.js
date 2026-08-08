@@ -277,7 +277,10 @@ export class Router {
     return {
       mode, pts, corners, hazards, legs,
       km: len / 1000, timeMin,
+      // curvPerKm — vidinis vingiuotumo matas (0–1000‰), naudojamas variantams rikiuoti.
+      // Rodyti vartotojui reikia cornersPerKm — TIKRAS posūkių tankis (kaip Rods).
       curvPerKm: len ? curv / len * 1000 : 0,
+      cornersPerKm: len ? corners.length / (len / 1000) : 0,
       pavedPct: len ? Math.round(paved / len * 100) : 0,
       bumps: hazards.filter(h => h.kind === 'bump').length,
       cams: hazards.filter(h => h.kind === 'camera').length,

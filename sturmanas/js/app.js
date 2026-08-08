@@ -174,7 +174,7 @@ function showRoad(w) {
     <div class="grid4">
       ${stat(fmtDist(w.len), 'ilgis')}
       ${stat(w.corners.length, 'posūkių')}
-      ${stat(Math.round(w.curv / Math.max(w.len, 1) * 1000), 'vingių/km')}
+      ${stat((w.corners.length / Math.max(w.len / 1000, 0.01)).toFixed(1), 'posūkių/km')}
       ${stat(bumps + cams, 'trukdžių', bumps + cams ? 'warn' : 'good')}
     </div>
     ${sevBar(sev)}
@@ -313,8 +313,8 @@ function variantCard(r, i, active) {
     <div style="min-width:0;flex:1">
       <div class="row" style="justify-content:space-between;align-items:baseline">
         <b style="font-size:19px" class="num">${r.km.toFixed(0)} km</b>
-        <span class="amber num" style="font-weight:800">${Math.round(r.curvPerKm)}<span
-          class="mut" style="font-size:10px;font-weight:600"> vingių/km</span></span>
+        <span class="amber num" style="font-weight:800">${(r.cornersPerKm||0).toFixed(1)}<span
+          class="mut" style="font-size:10px;font-weight:600"> posūkių/km</span></span>
       </div>
       <div class="mt" style="margin-top:4px">
         <span>${fmtDur(r.timeMin)}</span>
@@ -340,8 +340,8 @@ function routeCard(r) {
         ${r.tourEmoji} ${esc(r.tourName)}</div>` : ''}
         <div style="font-size:26px;font-weight:900" class="num">${r.km.toFixed(1)} km</div>
         <div class="mut" style="font-size:12.5px">${fmtDur(r.timeMin)} · ${MODES[r.mode].label}</div></div>
-      <div style="text-align:right"><div style="font-size:26px;font-weight:900;color:var(--amber)" class="num">${Math.round(r.curvPerKm)}</div>
-        <div class="mut" style="font-size:11px">vingių/km</div></div>
+      <div style="text-align:right"><div style="font-size:26px;font-weight:900;color:var(--amber)" class="num">${(r.cornersPerKm||0).toFixed(1)}</div>
+        <div class="mut" style="font-size:11px">posūkių/km</div></div>
     </div>
       </div>
     </div>
@@ -373,7 +373,7 @@ window.__drive = () => { switchTo('drive'); startDrive(); };
 window.__save = () => {
   if (!route) return;
   const s = JSON.parse(localStorage.sturmanas_routes || '[]');
-  s.unshift({ t: Date.now(), km: route.km, curv: route.curvPerKm, mode: route.mode,
+  s.unshift({ t: Date.now(), km: route.km, curv: route.curvPerKm, cpk: route.cornersPerKm, mode: route.mode,
               pts: route.pts.filter((_, i) => i % 3 === 0), name: route.roads.slice(0, 2).join(' → ') });
   localStorage.sturmanas_routes = JSON.stringify(s.slice(0, 40));
   toast('Išsaugota'); renderSaved();
@@ -751,7 +751,7 @@ function renderSaved() {
     (s.length ? s.map((r, i) => `<div class="road" onclick="window.__loadSaved(${i})">
       <div class="sc"><b class="amber">${r.km.toFixed(0)}</b><i>KM</i></div>
       <div style="min-width:0;flex:1"><div class="nm">${esc(r.name || 'Maršrutas')}</div>
-      <div class="mt"><span>${Math.round(r.curv)} vingių/km</span>
+      <div class="mt"><span>${(r.cpk != null ? r.cpk : r.curv/10).toFixed(1)} posūkių/km</span>
         <span>${new Date(r.t).toLocaleDateString('lt')}</span></div></div></div>`).join('')
      : `<div class="card mut" style="text-align:center;font-size:13px">Dar nieko neišsaugojai.<br>
         Sukurk maršrutą ir spausk 💾</div>`);
