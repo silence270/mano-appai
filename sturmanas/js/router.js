@@ -154,6 +154,26 @@ export class Router {
   }
 
   /**
+   * Maršrutas per kelis taškus iš eilės (vaizdingiems maršrutams).
+   * @param {Array<[lat,lon]>} pts — taškai eilės tvarka
+   */
+  routeVia(pts, mode = 'scenic', pavedOnly = false) {
+    this.pavedOnly = pavedOnly;
+    const nodes = pts.map(p => this.nearestNode(p[0], p[1])).filter(n => n >= 0);
+    if (nodes.length < 2) return null;
+    const full = [];
+    const used = new Set();
+    for (let i = 0; i < nodes.length - 1; i++) {
+      if (nodes[i] === nodes[i + 1]) continue;
+      const seg = this.search(nodes[i], nodes[i + 1], mode, used);
+      if (!seg) continue;                       // praleidžiam nepasiekiamą tarpą
+      seg.forEach(s => used.add(s.edge.w));
+      full.push(...seg);
+    }
+    return full.length ? this.describe(full, mode) : null;
+  }
+
+  /**
    * Kilpa: išvažiuoji ir grįžti į tą pačią vietą, ~targetKm.
    * Renkam tolimą tašką ant gero kelio, važiuojam per jį ir grįžtam kitu keliu.
    */

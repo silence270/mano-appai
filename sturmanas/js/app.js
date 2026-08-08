@@ -1,7 +1,7 @@
 /* Šturmanas · valdiklis */
 'use strict';
-import { RoadDB, SEV_COLOR, SEV_NAME, HAZ_LT, HAZ_ICON, SURF_LT, dist, bearing,
-         callText, callDistance, fmtDist, fmtDur } from './core.js';
+import { RoadDB, SEV_COLOR, SEV_NAME, HAZ_LT, HAZ_ICON, SURF_LT, PLACE, dist, bearing,
+         callText, callPhrase, callDistance, fmtDist, fmtDur } from './core.js';
 import { Router, MODES } from './router.js';
 
 const $ = s => document.querySelector(s);
@@ -43,7 +43,7 @@ function initMap() {
   layerRoads = L.layerGroup().addTo(map);
   layerRoute = L.layerGroup().addTo(map);
   layerMe = L.layerGroup().addTo(map);
-  map.on('moveend', drawRoads);
+  map.on('moveend', () => { drawRoads(); drawPlaces(); });
   map.on('click', e => {
     if (!pickMode) return;
     pickMode = false;
@@ -117,6 +117,37 @@ function drawRoads() {
       layerRoads.addLayer(line);
     }
   }
+}
+
+/* ── Gražios vietos ─────────────────────────────────────────────────────── */
+let layerPlaces = null, placesOn = false;
+function drawPlaces() {
+  if (!layerPlaces) layerPlaces = L.layerGroup().addTo(map);
+  layerPlaces.clearLayers();
+  if (!placesOn) return;
+  const z = map.getZoom(), b = map.getBounds().pad(0.1);
+  const minScore = z < 12 ? 8 : z < 14 ? 5 : 3;
+  for (const p of db.places) {
+    if (p.s < minScore || !b.contains([p.lat, p.lon])) continue;
+    const m = PLACE[p.c] || { i: '📍', n: '' };
+    L.marker([p.lat, p.lon], { icon: L.divIcon({
+      className: '', iconSize: [30, 30], iconAnchor: [15, 15],
+      html: `<div style="width:30px;height:30px;border-radius:50%;background:rgba(18,20,27,.94);
+        border:1.5px solid #3d465c;display:flex;align-items:center;
+        justify-content:center;font-size:15px;box-shadow:0 3px 10px rgba(0,0,0,.6)">${m.i}</div>` }) })
+      .on('click', ev => { L.DomEvent.stop(ev); showPlace(p); })
+      .addTo(layerPlaces);
+  }
+}
+function showPlace(p) {
+  const m = PLACE[p.c] || { i: '📍', n: '' };
+  openSheet(`<div style="font-size:38px;line-height:1">${m.i}</div>
+    <h2 style="margin:6px 0 3px;font-size:21px">${esc(p.n)}</h2>
+    <div class="mut" style="font-size:12.5px;margin-bottom:14px">${m.n}</div>
+    <button class="btn pri" onclick="window.__routeTo(${p.lat},${p.lon})">Sudaryti maršrutą čia</button>
+    <button class="btn gost" style="margin-top:8px"
+      onclick="window.open('https://www.google.com/maps/search/?api=1&query=${p.lat},${p.lon}','_blank')">
+      Atidaryti žemėlapiuose</button>`);
 }
 
 function locateMe(fly = true) {
@@ -218,7 +249,9 @@ function routeCard(r) {
   const tight = r.tight;
   return `<div class="card">
     <div class="row" style="justify-content:space-between;margin-bottom:12px">
-      <div><div style="font-size:26px;font-weight:900" class="num">${r.km.toFixed(1)} km</div>
+      <div>${r.tourName ? `<div style="font-size:13px;font-weight:800;color:var(--amber);margin-bottom:2px">
+        ${r.tourEmoji} ${esc(r.tourName)}</div>` : ''}
+        <div style="font-size:26px;font-weight:900" class="num">${r.km.toFixed(1)} km</div>
         <div class="mut" style="font-size:12.5px">${fmtDur(r.timeMin)} · ${MODES[r.mode].label}</div></div>
       <div style="text-align:right"><div style="font-size:26px;font-weight:900;color:var(--amber)" class="num">${Math.round(r.curvPerKm)}</div>
         <div class="mut" style="font-size:11px">vingių/km</div></div>
@@ -232,6 +265,15 @@ function routeCard(r) {
     ${sevBar(r.sev)}
     ${r.roads.length ? `<div class="mut" style="font-size:12px;margin-top:12px">
       <b class="amber">Keliai:</b> ${r.roads.map(esc).join(' → ')}</div>` : ''}
+    ${(() => { const st = stopsAlong(r); return st.length ? `
+      <div style="margin-top:14px">
+        <div class="mut" style="font-size:11px;font-weight:800;letter-spacing:.08em;
+             text-transform:uppercase;margin-bottom:7px">Sustojimai pakeliui</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">${st.map(p => {
+          const m = PLACE[p.c] || { i: '📍' };
+          return `<span class="chip" style="cursor:pointer" onclick="window.__place(${p.lat},${p.lon})">
+            ${m.i} ${esc(p.n.length > 22 ? p.n.slice(0, 21) + '…' : p.n)}</span>`; }).join('')}</div>
+      </div>` : ''; })()}
     <div class="row" style="gap:8px;margin-top:14px">
       <button class="btn pri" onclick="window.__drive()">▶ Važiuoti</button>
       <button class="btn sm" onclick="window.__save()">💾</button>
@@ -271,7 +313,7 @@ function startDrive() {
   driveRoute = route; routeCum = null;
   el('driveIdle').classList.add('hide');
   el('btnDrive').textContent = '⏹ STOP';
-  speak('Šturmanas pasiruošęs', true);
+  speak(voiceLT ? 'Šturmanas pasiruošęs' : 'Co-driver ready', true);
   requestWake();
   if (route && new URLSearchParams(location.search).has('sim')) return simulate();
   if (!navigator.geolocation) { toast('Nėra GPS'); return simulate(); }
@@ -324,13 +366,18 @@ function updateDrive(la, lo, hd) {
   renderCall(items);
   // balso kvietimai
   const lead = callDistance(curSpeed, 5);
-  for (const it of items.slice(0, 4)) {
+  for (let k = 0; k < Math.min(4, items.length); k++) {
+    const it = items[k];
     const key = `${it.way ? it.way.id : 'r'}:${it.type}:${it.i}:${Math.round((it.at ?? 0) / 25)}`;
     if (called.has(key)) continue;
     if (it.dist <= lead) {
       called.add(key);
-      const txt = callText(it);
-      if (txt) speak((it.dist > lead * .75 ? Math.round(it.dist / 50) * 50 + ', ' : '') + txt);
+      const nxt = items[k + 1];
+      const txt = callPhrase(it, nxt, voiceLT);
+      if (txt) speak(txt);
+      // jei kitas iškart po šio — jį jau pasakėm, nekartojam
+      if (nxt && nxt.type === 'corner' && nxt.dist - it.dist < 90)
+        called.add(`${nxt.way ? nxt.way.id : 'r'}:${nxt.type}:${nxt.i}:${Math.round((nxt.at ?? 0) / 25)}`);
     }
   }
   if (called.size > 400) called.clear();
@@ -452,9 +499,12 @@ function renderCall(items) {
 
 /* ── Balsas ────────────────────────────────────────────────────────────── */
 let voice = null, voiceReady = false;
+let voiceLT = true;
 function pickVoice() {
   const vs = speechSynthesis.getVoices();
-  voice = vs.find(v => v.lang.startsWith('lt')) || vs.find(v => v.lang.startsWith('en')) || vs[0];
+  const lt = vs.find(v => v.lang && v.lang.toLowerCase().startsWith('lt'));
+  voice = lt || vs.find(v => v.lang && v.lang.toLowerCase().startsWith('en')) || vs[0];
+  voiceLT = !!lt;                       // nėra lietuviško balso -> tarptautinės ralio komandos
   voiceReady = true;
 }
 speechSynthesis?.addEventListener?.('voiceschanged', pickVoice);
@@ -466,7 +516,7 @@ function speak(text, force = false) {
   if (!voiceReady) pickVoice();
   const u = new SpeechSynthesisUtterance(text);
   if (voice) u.voice = voice;
-  u.lang = voice?.lang || 'lt-LT';
+  u.lang = voice?.lang || (voiceLT ? 'lt-LT' : 'en-GB');
   u.rate = 1.15; u.pitch = 1; u.volume = 1;
   speechSynthesis.speak(u);
 }
@@ -478,7 +528,7 @@ function simulate() {
   let i = 0, t = 0;
   curSpeed = 70;
   simTimer = setInterval(() => {
-    if (i >= pts.length - 2) { stopDrive(); speak('Maršrutas baigtas'); return; }
+    if (i >= pts.length - 2) { stopDrive(); speak(voiceLT ? 'Maršrutas baigtas' : 'Route finished'); return; }
     const step = curSpeed / 3.6 * 0.5;         // 0,5 s žingsnis
     let moved = 0;
     while (moved < step && i < pts.length - 2) {
@@ -506,10 +556,18 @@ function initUI() {
   el('btnDrive').onclick = () => (watchId != null || simTimer) ? stopDrive() : startDrive();
   el('btnVoice').onclick = () => {
     voiceOn = !voiceOn; el('btnVoice').textContent = voiceOn ? '🔊' : '🔇';
-    if (voiceOn) speak('Balsas įjungtas', true);
+    if (voiceOn) speak(voiceLT ? 'Balsas įjungtas' : 'Voice on', true);
+  };
+  el('btnPlaces').onclick = () => {
+    placesOn = !placesOn;
+    el('btnPlaces').style.background = placesOn ? 'rgba(255,179,0,.92)' : 'rgba(18,20,27,.92)';
+    el('btnPlaces').style.color = placesOn ? '#151005' : '#fff';
+    drawPlaces();
+    if (placesOn) toast(`${db.places.length} gražių vietų ir sustojimų`);
   };
   renderSaved();
   renderBest();
+  renderTours();
 }
 
 function switchTo(s) {
@@ -543,6 +601,59 @@ window.__showBest = i => {
   setTimeout(() => showRoad(w), 400);
 };
 
+/* ── Suprojektuoti vaizdingi maršrutai ──────────────────────────────────── */
+/** Rato ilgis pagal taškus (tiesė × 1,3 — realaus kelio pataisa). */
+function tourKm(t) {
+  let m = 0;
+  for (let i = 0; i < t.wp.length - 1; i++)
+    m += dist(t.wp[i][0], t.wp[i][1], t.wp[i + 1][0], t.wp[i + 1][1]);
+  return Math.round(m / 1000 * 1.3 / 5) * 5;
+}
+function renderTours() {
+  const box = el('tourList'); if (!box) return;
+  box.innerHTML = (db.tours || []).map((t, i) => `
+    <div class="road" onclick="window.__tour(${i})" style="align-items:flex-start">
+      <div class="sc" style="font-size:22px">${t.emoji}</div>
+      <div style="min-width:0;flex:1">
+        <div class="nm">${esc(t.name)}</div>
+        <div class="mt" style="white-space:normal;line-height:1.45;margin-top:5px">${esc(t.desc)}</div>
+        <div class="mt" style="margin-top:6px">
+          <span class="chip">${tourKm(t)} km ratas</span>
+          <span class="chip">${MODES[t.mode].label}</span>
+          <span class="chip">${t.wp.length} sustojimai</span></div>
+        <div class="mut" style="font-size:10.5px;margin-top:4px">+ kelias nuo tavęs ir atgal</div>
+      </div></div>`).join('');
+}
+window.__tour = async i => {
+  const t = db.tours[i]; if (!t) return;
+  busy(`Braižomas „${t.name}"…`); await tick();
+  const me = window.MY;
+  const wp = me ? [me, ...t.wp, me] : t.wp;      // nuo tavęs ir atgal
+  const r = router.routeVia(wp, t.mode, el('pavedOnly')?.checked);
+  busy(null);
+  if (!r) { toast('Nepavyko nubrėžti šio maršruto'); return; }
+  r.tourName = t.name; r.tourEmoji = t.emoji;
+  setRoute(r); switchTo('route');
+  el('routeOut').scrollIntoView({ behavior: 'smooth', block: 'start' });
+};
+
+/** Vietos, pro kurias eina maršrutas (sustojimai). */
+function stopsAlong(r, maxM = 1200) {
+  const out = [];
+  const step = Math.max(1, Math.floor(r.pts.length / 400));
+  for (const p of db.places) {
+    if (p.s < 6) continue;
+    let best = Infinity, at = 0, acc = 0;
+    for (let i = 0; i < r.pts.length; i += step) {
+      const d = dist(p.lat, p.lon, r.pts[i][0], r.pts[i][1]);
+      if (d < best) { best = d; at = i; }
+    }
+    if (best <= maxM) out.push({ ...p, d: best, at });
+  }
+  out.sort((a, b) => a.at - b.at);
+  return out.slice(0, 14);
+}
+
 function renderSaved() {
   const s = JSON.parse(localStorage.sturmanas_routes || '[]');
   el('savedList').innerHTML = `
@@ -557,6 +668,13 @@ function renderSaved() {
         Sukurk maršrutą ir spausk 💾</div>`);
 }
 window.openSheet = openSheet;
+window.__place = (lat, lon) => {
+  const p = db.places.find(x => x.lat === lat && x.lon === lon);
+  closeSheet(); switchTo('map');
+  map.setView([lat, lon], 15);
+  if (!placesOn) { placesOn = true; el('btnPlaces').style.background = 'rgba(255,179,0,.9)'; drawPlaces(); }
+  if (p) setTimeout(() => showPlace(p), 350);
+};
 window.__loadSaved = i => {
   const r = JSON.parse(localStorage.sturmanas_routes || '[]')[i];
   if (!r) return;

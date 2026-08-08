@@ -6,6 +6,21 @@ export const SEV_COLOR = { 1: '#ff2d55', 2: '#ff5e3a', 3: '#ff9500', 4: '#ffcc00
 export const HAZ = ['bump', 'camera', 'railway', 'stop', 'giveway', 'rumble'];
 export const HAZ_LT = { bump: 'greičio kalnelis', camera: 'greičio kamera', railway: 'pervaža', stop: 'STOP', giveway: 'duoti kelią', rumble: 'grubus ruožas' };
 export const HAZ_ICON = { bump: '🛑', camera: '📷', railway: '🚂', stop: '✋', giveway: '⚠️', rumble: '〰️' };
+export const PLACE = {
+  vaizdas:    { i: '🔭', n: 'apžvalgos taškas' },
+  bokstas:    { i: '🗼', n: 'apžvalgos bokštas' },
+  pilis:      { i: '🏰', n: 'pilis' },
+  piliakalnis:{ i: '⛰️', n: 'piliakalnis' },
+  papludymis: { i: '🏖️', n: 'paplūdimys' },
+  papludymis2:{ i: '🏖️', n: 'paplūdimys' },
+  papludimys: { i: '🏖️', n: 'paplūdimys' },
+  muziejus:   { i: '🏛️', n: 'muziejus' },
+  poilsis:    { i: '🌳', n: 'poilsiavietė' },
+  dvaras:     { i: '🏚️', n: 'dvaras' },
+  idomybe:    { i: '✨', n: 'įdomybė' },
+  kavine:     { i: '☕', n: 'kavinė' },
+  degaline:   { i: '⛽', n: 'degalinė' },
+};
 export const SURF_LT = { paved: 'asfaltas', unpaved: 'žvyras', cobble: 'grindinys', unknown: 'nežinoma' };
 
 /* ── Geometrija ─────────────────────────────────────────────────────────── */
@@ -70,6 +85,10 @@ export class RoadDB {
     try {
       this.best = await (await fetch('data/best.json')).json();
     } catch (e) { this.best = []; }
+    try { this.places = await (await fetch('data/places.json')).json(); }
+    catch (e) { this.places = []; }
+    try { this.tours = await (await fetch('data/tours.json')).json(); }
+    catch (e) { this.tours = []; }
     return this;
   }
 
@@ -172,18 +191,55 @@ export class RoadDB {
   }
 }
 
-/* ── Rally kvietimai (šturmano kalba) ───────────────────────────────────── */
-export function callText(item, mode = 'number') {
-  if (item.type === 'hazard') {
-    return { bump: 'kalnelis', camera: 'kamera', railway: 'pervaža',
-             stop: 'stop', giveway: 'duoti kelią', rumble: 'grubus' }[item.kind] || '';
-  }
+/* ── Šturmano kalba (ralio pace notes) ──────────────────────────────────
+   Skaičiai sakomi ŽODŽIAIS — sintezatorius juos ištaria natūraliai ir aiškiai,
+   net kai balsas ne lietuviškas. Jei lietuviško balso telefone nėra, imamos
+   tarptautinės ralio komandos (jos pasaulyje ir taip sakomos angliškai). */
+const NUM_LT = { 1: 'vienas', 2: 'du', 3: 'trys', 4: 'keturi', 5: 'penki', 6: 'šeši' };
+const NUM_EN = { 1: 'one', 2: 'two', 3: 'three', 4: 'four', 5: 'five', 6: 'six' };
+
+const HAZ_SAY_LT = { bump: 'kalnelis', camera: 'kamera', railway: 'pervaža',
+                     stop: 'stop', giveway: 'duok kelią', rumble: 'grubus ruožas' };
+const HAZ_SAY_EN = { bump: 'bump', camera: 'camera', railway: 'crossing',
+                     stop: 'stop', giveway: 'give way', rumble: 'rumble' };
+
+/** Atstumas žodžiais: 150 -> „šimtas penkiasdešimt". */
+export function distWords(m, lt = true) {
+  const v = Math.round(m / 50) * 50;
+  if (!lt) return String(v);
+  const H = { 0: '', 100: 'šimtas', 200: 'du šimtai', 300: 'trys šimtai', 400: 'keturi šimtai' };
+  const h = Math.floor(v / 100) * 100, r = v - h;
+  const rest = r === 50 ? 'penkiasdešimt' : '';
+  return [H[h] || '', rest].filter(Boolean).join(' ') || 'penkiasdešimt';
+}
+
+/**
+ * Vieno įvykio kvietimas.
+ * @param {boolean} lt — ar turim lietuvišką balsą
+ */
+export function callText(item, lt = true) {
+  if (item.type === 'hazard')
+    return (lt ? HAZ_SAY_LT : HAZ_SAY_EN)[item.kind] || '';
   if (item.type !== 'corner') return '';
-  const dir = item.dir === 'L' ? 'kairė' : 'dešinė';
-  let s = dir + ' ' + item.sev;
-  if (item.shape === 'tightens') s += ', siaurėja';
-  else if (item.shape === 'opens') s += ', veriasi';
-  if (item.len > 140) s += ', ilga';
+  const N = lt ? NUM_LT : NUM_EN;
+  let s = (lt ? (item.dir === 'L' ? 'kairė' : 'dešinė')
+              : (item.dir === 'L' ? 'left' : 'right')) + ' ' + N[item.sev];
+  if (item.len > 150) s += lt ? ', ilga' : ' long';
+  if (item.shape === 'tightens') s += lt ? ', siaurėja' : ', tightens';
+  else if (item.shape === 'opens') s += lt ? ', atsiveria' : ', opens';
+  return s;
+}
+
+/**
+ * Pilnas sakinys: atstumas + posūkis (+ iškart po jo einantis).
+ * Pvz. „šimtas penkiasdešimt, dešinė trys siaurėja ir tuoj kairė penki".
+ */
+export function callPhrase(item, next, lt = true) {
+  let s = '';
+  if (item.dist > 70) s += distWords(item.dist, lt) + ', ';
+  s += callText(item, lt);
+  if (next && next.dist - item.dist < 90 && next.type === 'corner')
+    s += (lt ? ' ir tuoj ' : ' into ') + callText(next, lt);
   return s;
 }
 

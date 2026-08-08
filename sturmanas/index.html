@@ -156,6 +156,10 @@ body{background:var(--bg);color:var(--ink);font:15px/1.45 -apple-system,BlinkMac
       <div class="pill" id="mapPill">—</div>
     </div>
     <div id="map"></div>
+    <button id="btnPlaces" title="Gražios vietos"
+      style="position:absolute;right:12px;bottom:16px;z-index:400;width:46px;height:46px;border-radius:14px;
+             border:1px solid var(--line);background:rgba(18,20,27,.92);color:#fff;font-size:20px;cursor:pointer;
+             -webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px)">🔭</button>
   </section>
 
   <!-- ══ MARŠRUTAS ══ -->
@@ -185,6 +189,9 @@ body{background:var(--bg);color:var(--ink);font:15px/1.45 -apple-system,BlinkMac
         <button class="btn gost" id="btnPick" style="margin-top:8px">📍 Maršrutas iki taško žemėlapyje</button>
       </div>
       <div id="routeOut"></div>
+      <h3 style="margin:22px 0 10px;font-size:12px;font-weight:800;letter-spacing:.09em;
+                 text-transform:uppercase;color:var(--mut)">Suprojektuoti maršrutai</h3>
+      <div id="tourList"></div>
     </div>
   </section>
 
