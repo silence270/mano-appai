@@ -98,6 +98,22 @@ body{background:var(--bg);color:var(--ink);font:15px/1.45 -apple-system,BlinkMac
 .callsub{font-size:15px;font-weight:700;color:var(--amber)}
 .calldist{font-size:38px;font-weight:900;margin-top:8px}
 .idle{font-size:16px;color:var(--mut);font-weight:700;text-align:center;padding:0 30px}
+/* ── Maršruto peržiūra prieš startą ── */
+.preview{flex:none;padding:4px 0 8px;overflow-y:auto;max-height:46vh}
+.pv-top{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;text-align:center;margin-bottom:10px}
+.pv-km{font-size:22px;font-weight:900;line-height:1.1}
+.pv-lbl{font-size:10.5px;font-weight:700;color:var(--mut);text-transform:uppercase;letter-spacing:.05em}
+.pv-strip{display:flex;height:10px;border-radius:5px;overflow:hidden;background:#1a1d26;margin-bottom:7px}
+.pv-strip i{display:block;height:100%}
+.pv-legend{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:9px}
+.pv-legend span{font-size:11px;font-weight:800;padding:2px 7px;border-radius:99px;background:#171a22}
+.pv-toggle{width:100%;font:inherit;font-size:13px;font-weight:800;color:var(--mut);background:#141721;
+  border:1px solid #232734;border-radius:11px;padding:8px;cursor:pointer}
+.pv-toggle:hover{color:#fff}
+.pv-list{margin-top:8px;display:flex;flex-direction:column;gap:4px}
+.pv-row{display:flex;align-items:center;gap:9px;padding:6px 9px;background:#12151d;border-radius:9px;font-size:13px}
+.pv-row b{min-width:18px;text-align:center;font-weight:900}
+.pv-row .pv-at{margin-left:auto;color:var(--mut);font-weight:700;font-variant-numeric:tabular-nums}
 
 .next{flex:none;padding:10px 0 6px;display:flex;gap:8px;overflow-x:auto}
 .nx{flex:none;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:8px 11px;min-width:92px}
@@ -203,6 +219,19 @@ body{background:var(--bg);color:var(--ink);font:15px/1.45 -apple-system,BlinkMac
       <div class="hudtop">
         <div><div class="spd num"><span id="spd">0</span><small> km/h</small></div></div>
         <div class="rd"><b id="curRoad">—</b><span id="curInfo">paspausk START</span></div>
+      </div>
+      <!-- PERŽIŪRA prieš startą (kaip Waze/Maps): maršruto santrauka, posūkių juosta, sąrašas -->
+      <div class="preview" id="drivePrev">
+        <div class="pv-top">
+          <div><div class="pv-km num" id="pvKm">—</div><div class="pv-lbl">km</div></div>
+          <div><div class="pv-km num" id="pvTime">—</div><div class="pv-lbl">trukmė</div></div>
+          <div><div class="pv-km num" id="pvEta">—</div><div class="pv-lbl">grįši</div></div>
+          <div><div class="pv-km num" id="pvCorn">—</div><div class="pv-lbl">posūkių</div></div>
+        </div>
+        <div class="pv-strip" id="pvStrip" title="Posūkių sunkumas maršrute"></div>
+        <div class="pv-legend" id="pvLegend"></div>
+        <button class="pv-toggle" id="pvToggle">Visi posūkiai iš eilės ▾</button>
+        <div class="pv-list hide" id="pvList"></div>
       </div>
       <div class="callbox" id="callbox">
         <div class="idle" id="driveIdle">Paspausk <b class="amber">START</b> — šturmanas seks kelią ir sakys posūkius prieš juos.</div>

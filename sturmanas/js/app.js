@@ -272,6 +272,40 @@ function setRoute(r, keepVariants) {
     const w = h.way;
   });
   map.fitBounds(L.polyline(r.pts).getBounds(), { padding: [40, 40] });
+  drawPreview(r);
+}
+
+/* ── Maršruto peržiūra prieš startą (Waze/Maps principas: viską perskaitai stovėdamas) ── */
+function drawPreview(r) {
+  const box = el('drivePrev'); if (!box || !r) return;
+  const sev = {}; r.corners.forEach(c => sev[c.sev] = (sev[c.sev] || 0) + 1);
+  const tot = r.corners.length || 1;
+  const sunkiausias = r.corners.reduce((m, c) => Math.min(m, c.sev), 6);
+  const eta = new Date(Date.now() + r.timeMin * 60000)
+    .toLocaleTimeString('lt-LT', { hour: '2-digit', minute: '2-digit' });
+
+  el('pvKm').textContent = r.km.toFixed(1);
+  el('pvTime').textContent = fmtDur(r.timeMin).replace(' min', '′').replace(' h ', 'h ');
+  el('pvEta').textContent = eta;
+  el('pvCorn').textContent = tot;
+  el('pvStrip').innerHTML = [1,2,3,4,5,6]
+    .map(x => sev[x] ? `<i style="width:${sev[x] / tot * 100}%;background:${SEV_COLOR[x]}"></i>` : '').join('');
+  el('pvLegend').innerHTML =
+    `<span style="color:${SEV_COLOR[sunkiausias]}">Sunkiausias: ${sunkiausias} · ${SEV_NAME[sunkiausias]}</span>` +
+    `<span>${(r.cornersPerKm || 0).toFixed(1)} posūkių/km</span>` +
+    `<span>${r.pavedPct}% asfalto</span>` +
+    (r.bumps ? `<span>${r.bumps} kalneliai</span>` : '') +
+    (r.cams ? `<span>${r.cams} kameros</span>` : '');
+  // Posūkių sąrašas iš eilės — kaip „Directions" Maps'e
+  el('pvList').innerHTML = r.corners.slice(0, 120).map((c, i) => {
+    const prev = i ? r.corners[i - 1].at : 0;
+    return `<div class="pv-row"><b style="color:${SEV_COLOR[c.sev]}">${c.sev}</b>` +
+      `<span>${c.dir === 'L' ? '↰ kairė' : '↱ dešinė'}` +
+      (c.shape === 'tightens' ? ', siaurėja' : c.shape === 'opens' ? ', atsiveria' : '') + '</span>' +
+      // Susilieję posūkiai (mažiau nei 25 m) — rodom kaip grandinę, ne „0 m"
+      `<span class="pv-at">${c.at - prev < 25 ? '＋ iškart' : fmtDist(c.at - prev)}</span></div>`;
+  }).join('') + (r.corners.length > 120 ? '<div class="pv-row">…</div>' : '');
+  box.classList.remove('hide');
 }
 
 /** Maršruto formos brėžinys — lengvas SVG (ne žemėlapis, tad greitas). */
@@ -400,7 +434,9 @@ function startDrive() {
   if (watchId != null || simTimer) return stopDrive();
   called.clear();
   driveRoute = route; routeCum = null;
+  primeVoice();                       // iOS: be „pažadinimo" per paspaudimą balsas tyli visą kelionę
   el('driveIdle').classList.add('hide');
+  el('drivePrev')?.classList.add('hide');
   el('btnDrive').textContent = '⏹ STOP';
   speak(voiceLT ? 'Šturmanas pasiruošęs' : 'Co-driver ready', true);
   requestWake();
@@ -418,6 +454,7 @@ function stopDrive() {
   el('btnDrive').textContent = '▶ START';
   driveRoute = null; routeCum = null;
   el('driveIdle').classList.remove('hide');
+  if (route) { el('drivePrev')?.classList.remove('hide'); drawPreview(route); }
   el('callWrap').classList.add('hide');
   if (wakeLock) { wakeLock.release?.(); wakeLock = null; }
 }
@@ -610,10 +647,28 @@ function setLang(lt) {
 speechSynthesis?.addEventListener?.('voiceschanged', pickVoice);
 setTimeout(pickVoice, 300);
 
+/**
+ * iOS/Safari: balsas veikia TIK jei pirmas kartas paleistas iš tikro paspaudimo.
+ * Be šito visa kelionė būna tyli. Kviečiam iš START mygtuko.
+ */
+let voicePrimed = false;
+function primeVoice() {
+  if (voicePrimed || !('speechSynthesis' in window)) return;
+  try {
+    const u = new SpeechSynthesisUtterance(' ');
+    u.volume = 0; speechSynthesis.speak(u);
+    voicePrimed = true;
+  } catch (e) {}
+  pickVoice();
+}
+
 function speak(text, force = false) {
   if (!voiceOn && !force) return;
   if (!('speechSynthesis' in window)) return;
   if (!voiceReady) pickVoice();
+  // Posūkiai eina pulkais — sena, jau pravažiuota komanda turi UŽLEISTI vietą naujai.
+  // Kitaip susikaupia eilė ir šturmanas sako posūkius, kurie jau praėjo.
+  if (speechSynthesis.speaking || speechSynthesis.pending) speechSynthesis.cancel();
   const u = new SpeechSynthesisUtterance(text);
   if (voice) u.voice = voice;
   // Kalbos žymė pagal PASIRINKIMĄ (ne pagal balsą) — kitaip lietuvišką tekstą
@@ -659,6 +714,11 @@ function initUI() {
   el('btnVoice').onclick = () => {
     voiceOn = !voiceOn; el('btnVoice').textContent = voiceOn ? '🔊' : '🔇';
     if (voiceOn) speak(voiceLT ? 'Balsas įjungtas' : 'Voice on', true);
+  };
+  // Peržiūros posūkių sąrašas — kaip „Directions" Maps'e: skaitai stovėdamas.
+  el('pvToggle').onclick = () => {
+    const l = el('pvList'), atv = l.classList.toggle('hide');
+    el('pvToggle').textContent = atv ? 'Visi posūkiai iš eilės ▾' : 'Slėpti sąrašą ▴';
   };
   // LT/EN — šturmano kalba. Įsimenama; be lietuviško TTS balso lietuviškai
   // skaitys svetimas balsas (ralio komandos vis tiek aiškios).
