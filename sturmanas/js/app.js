@@ -588,13 +588,24 @@ function renderCall(items) {
 
 /* ── Balsas ────────────────────────────────────────────────────────────── */
 let voice = null, voiceReady = false;
-let voiceLT = true;
+// Kalbą renkasi VARTOTOJAS (mygtukas LT/EN), o ne telefono balsų sąrašas.
+// Anksčiau: nėra lietuviško TTS -> automatiškai angliškos komandos. Dabar: jei
+// pasirinkta LT, komandos LIETUVIŠKOS net ir su svetimu balsu (suprantama).
+let voiceLT = (localStorage.getItem('sturm_kalba') || 'lt') === 'lt';
+let ltVoiceExists = false;
 function pickVoice() {
   const vs = speechSynthesis.getVoices();
   const lt = vs.find(v => v.lang && v.lang.toLowerCase().startsWith('lt'));
-  voice = lt || vs.find(v => v.lang && v.lang.toLowerCase().startsWith('en')) || vs[0];
-  voiceLT = !!lt;                       // nėra lietuviško balso -> tarptautinės ralio komandos
+  const en = vs.find(v => v.lang && v.lang.toLowerCase().startsWith('en'));
+  ltVoiceExists = !!lt;
+  voice = voiceLT ? (lt || en || vs[0]) : (en || vs[0]);
   voiceReady = true;
+}
+function setLang(lt) {
+  voiceLT = lt;
+  localStorage.setItem('sturm_kalba', lt ? 'lt' : 'en');
+  pickVoice();
+  const b = el('btnLang'); if (b) b.textContent = lt ? 'LT' : 'EN';
 }
 speechSynthesis?.addEventListener?.('voiceschanged', pickVoice);
 setTimeout(pickVoice, 300);
@@ -605,7 +616,9 @@ function speak(text, force = false) {
   if (!voiceReady) pickVoice();
   const u = new SpeechSynthesisUtterance(text);
   if (voice) u.voice = voice;
-  u.lang = voice?.lang || (voiceLT ? 'lt-LT' : 'en-GB');
+  // Kalbos žymė pagal PASIRINKIMĄ (ne pagal balsą) — kitaip lietuvišką tekstą
+  // angliškas balsas tartų dar blogiau.
+  u.lang = voiceLT ? 'lt-LT' : 'en-GB';
   u.rate = 1.15; u.pitch = 1; u.volume = 1;
   speechSynthesis.speak(u);
 }
@@ -646,6 +659,14 @@ function initUI() {
   el('btnVoice').onclick = () => {
     voiceOn = !voiceOn; el('btnVoice').textContent = voiceOn ? '🔊' : '🔇';
     if (voiceOn) speak(voiceLT ? 'Balsas įjungtas' : 'Voice on', true);
+  };
+  // LT/EN — šturmano kalba. Įsimenama; be lietuviško TTS balso lietuviškai
+  // skaitys svetimas balsas (ralio komandos vis tiek aiškios).
+  el('btnLang').textContent = voiceLT ? 'LT' : 'EN';
+  el('btnLang').onclick = () => {
+    setLang(!voiceLT);
+    speak(voiceLT ? 'Šturmanas kalbės lietuviškai' : 'Co-driver speaking English', true);
+    if (voiceLT && !ltVoiceExists) toast('Lietuviško balso telefone nėra — skaitys kitas balsas');
   };
   el('btnPlaces').onclick = () => {
     placesOn = !placesOn;
