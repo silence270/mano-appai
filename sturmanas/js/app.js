@@ -1010,4 +1010,17 @@ function busy(msg) {
 }
 const tick = () => new Promise(r => setTimeout(r, 30));
 
-if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+/* Service worker: appas veikia be ryšio, bet naujoji versija turi pasiekti telefoną.
+   Be šito grįžtantis vartotojas matytų seną iš talpyklos, kol pats perkrautų du kartus. */
+if ('serviceWorker' in navigator) {
+  let perkrauta = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (perkrauta) return;                  // vieną kartą — kitaip ciklas
+    perkrauta = true;
+    location.reload();
+  });
+  navigator.serviceWorker.register('sw.js').then(r => {
+    r.update();                             // pasitikrinam kaskart atsidarius
+    setInterval(() => r.update(), 60 * 60 * 1000);
+  }).catch(() => {});
+}

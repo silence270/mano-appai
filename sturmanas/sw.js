@@ -1,5 +1,5 @@
 /* Šturmanas · service worker — veikia ir be interneto (išskyrus žemėlapio plyteles) */
-const V = 'sturmanas-v2';
+const V = 'sturmanas-v3';
 const SHELL = [
   './', './index.html', './manifest.json',
   './js/app.js', './js/core.js', './js/router.js', './js/ratas.js', './js/debesis.js',
