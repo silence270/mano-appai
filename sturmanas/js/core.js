@@ -62,6 +62,24 @@ export function decodePolyline(str, precision = 5) {
   return out;
 }
 
+/** Atvirkščias veiksmas — trasai į debesį (10× mažiau vietos nei JSON). */
+export function encodePolyline(pts, precision = 5) {
+  const factor = Math.pow(10, precision);
+  const skaičius = v => {                    // zigzag + 5 bitų grupės, kaip Google
+    v = v < 0 ? ~(v << 1) : (v << 1);
+    let s = '';
+    while (v >= 0x20) { s += String.fromCharCode((0x20 | (v & 0x1f)) + 63); v >>= 5; }
+    return s + String.fromCharCode(v + 63);
+  };
+  let lat = 0, lon = 0, out = '';
+  for (const p of pts) {
+    const la = Math.round(p[0] * factor), lo = Math.round(p[1] * factor);
+    out += skaičius(la - lat) + skaičius(lo - lon);
+    lat = la; lon = lo;
+  }
+  return out;
+}
+
 /* ── Duomenų bazė ───────────────────────────────────────────────────────── */
 export class RoadDB {
   constructor() { this.ways = []; this.grid = new Map(); this.cell = 0.005; /* ~450 m */ }

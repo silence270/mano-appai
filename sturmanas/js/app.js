@@ -3,6 +3,7 @@
 import { RoadDB, SEV_COLOR, SEV_NAME, HAZ_LT, HAZ_ICON, SURF_LT, PLACE, dist, bearing,
          callText, callPhrase, callDistance, fmtDist, fmtDur, tooFast, safeSpeed } from './core.js';
 import { Router, MODES } from './router.js';
+import * as Ratas from './ratas.js';
 
 const $ = s => document.querySelector(s);
 const el = id => document.getElementById(id);
@@ -314,6 +315,7 @@ function drawPreview(r) {
       // Susilieję posūkiai (mažiau nei 25 m) — rodom kaip grandinę, ne „0 m"
       `<span class="pv-at">${c.at - prev < 25 ? '＋ iškart' : fmtDist(c.at - prev)}</span></div>`;
   }).join('') + (r.corners.length > 120 ? '<div class="pv-row">…</div>' : '');
+  Ratas.lentelėĮPeržiūrą(h);        // draugų laikai — atkeliauja, kai atsako debesis
   box.classList.remove('hide');
 }
 
@@ -412,7 +414,9 @@ function routeCard(r) {
     </div>
   </div>`;
 }
-window.__drive = () => { switchTo('drive'); startDrive(); };
+// „Važiuoti" = maršruto peržiūra (kaip Waze/Maps). Važiavimą paleidžia START —
+// kitaip peržiūra dingtų nespėjus jos perskaityti.
+window.__drive = () => { switchTo('drive'); drawPreview(route); };
 window.__save = () => {
   if (!route) return;
   const s = JSON.parse(localStorage.sturmanas_routes || '[]');
@@ -592,6 +596,7 @@ function followAhead(snap, ahead) {
 
 /** Stabilus maršruto ID: ta pati trasa = tas pats raktas (ir kitame telefone). */
 function routeHash(r) {
+  if (r.hashOverride) return r.hashOverride;   // draugo trasa — ID atkeliavo kartu
   const p = r.pts, N = 24;                    // 24 kontroliniai taškai — atsparu GPS triukšmui
   let sig = Math.round(r.km * 10) + '|';
   for (let i = 0; i < N; i++) {
@@ -629,6 +634,8 @@ function runFinish(baigta) {
   const anksciau = visi.filter(x => x.hash === rec.hash && x.baigta);
   visi.unshift(rec);
   localStorage.sturmanas_runs = JSON.stringify(visi.slice(0, 200));
+  // Į draugų lentelę — tik įveiktos trasos (nutrauktas važiavimas nieko nesako)
+  if (baigta) Ratas.siųsk(rec, route ? (route.roads || []).slice(0, 2).join(' → ') : '');
   if (baigta) {
     const geriausias = anksciau.length ? Math.min(...anksciau.map(x => x.sek)) : null;
     if (geriausias == null) toast(`Trasa įveikta per ${fmtSek(sek)} — pirmas laikas!`);
@@ -827,9 +834,44 @@ function initUI() {
     drawPlaces();
     if (placesOn) toast(`${db.places.length} gražių vietų ir sustojimų`);
   };
+  // Šią trasą – draugams. Jie gauna kodą, važiuoja tą patį kelią, laikai gretinasi.
+  el('pvShare').onclick = () => { if (route) Ratas.dalinkTrasą(route); };
+  // Paskyra, draugų ratas, laikų lentelė, savos trasos
+  Ratas.init({ toast, esc, switchTo, routeHash, rodytiTrasą });
   renderSaved();
   renderBest();
   renderTours();
+}
+
+/**
+ * Draugo (ar savo įkelta) trasa — atkuriam ją kaip TIKRĄ maršrutą, kad būtų
+ * galima važiuoti su šturmanu, o laikas gultų į tą pačią lentelę (hash keliauja kartu).
+ */
+function rodytiTrasą(pts, pavadinimas, hash) {
+  if (!pts || pts.length < 2) return;
+  closeSheet();
+  // Atramos taškai iš geometrijos — jais maršrutizatorius atstato kelią
+  const N = Math.min(10, Math.max(3, Math.round(pts.length / 12)));
+  const atramos = Array.from({ length: N }, (_, i) => pts[Math.round(i * (pts.length - 1) / (N - 1))]);
+  const r = router.routeVia(atramos, mode);
+  if (r) {
+    if (hash) r.hashOverride = hash;         // laikai lyginami su draugo, ne atskirai
+    r.roads = pavadinimas ? [pavadinimas] : r.roads;
+    setRoute(r);
+    switchTo('drive');
+    drawPreview(r);
+    toast(pavadinimas ? pavadinimas + ' — spausk START' : 'Trasa paruošta');
+    return;
+  }
+  // Nepavyko atstatyti (kelias už duomenų ribų) — bent parodom liniją
+  switchTo('map');
+  layerRoute.clearLayers();
+  L.polyline(pts, { color: '#000', weight: 9, opacity: .5 }).addTo(layerRoute);
+  L.polyline(pts, { color: '#ffb300', weight: 5, opacity: .95 }).addTo(layerRoute);
+  L.circleMarker(pts[0], { radius: 6, color: '#34c759', fillColor: '#34c759', fillOpacity: 1 })
+    .addTo(layerRoute).bindTooltip('Startas');
+  map.fitBounds(L.polyline(pts).getBounds(), { padding: [40, 40] });
+  toast('Trasa už žemėlapio ribų — rodau tik liniją');
 }
 
 function switchTo(s) {

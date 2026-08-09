@@ -121,6 +121,27 @@ body{background:var(--bg);color:var(--ink);font:15px/1.45 -apple-system,BlinkMac
 .nx .c{font-size:15px;font-weight:800;margin-top:2px}
 #driveMap{height:132px;border-radius:14px;overflow:hidden;margin-bottom:8px;flex:none;border:1px solid var(--line)}
 
+/* ── Ratas: paskyra, draugai, laikai ─────────────────── */
+.fld{display:block;width:100%;padding:13px 14px;margin-bottom:9px;border-radius:13px;border:1px solid var(--line);
+  background:var(--bg2);color:var(--ink);font:inherit;font-size:16px;user-select:text}
+.fld::placeholder{color:var(--dim)}
+.fld:focus{outline:0;border-color:var(--amber)}
+.err{font-size:13px;font-weight:700;color:var(--s1);margin:2px 0 8px;min-height:0}
+.hint{font-size:12px;color:var(--mut);line-height:1.5}
+.kodas{font-size:19px;font-weight:900;letter-spacing:2px;color:var(--amber);font-variant-numeric:tabular-nums}
+.rat{background:var(--card);border:1px solid var(--line);border-radius:15px;padding:13px;margin-bottom:10px}
+.rat .nm{font-weight:800;font-size:15px}
+.rat .who{font-size:12px;color:var(--mut);margin-top:4px;line-height:1.5}
+/* Lentelė: kas greičiausias šioje trasoje */
+.lent{display:flex;flex-direction:column;gap:5px;margin-top:8px}
+.le{display:flex;align-items:center;gap:10px;padding:9px 11px;border-radius:11px;background:#12151d;font-size:13.5px}
+.le.man{background:rgba(255,179,0,.13);border:1px solid rgba(255,179,0,.32)}
+.le .vt{width:22px;font-weight:900;text-align:center;color:var(--mut);flex:none}
+.le .vt.au{color:#ffd24a} .le .vt.si{color:#cfd6e4} .le .vt.br{color:#d18f5a}
+.le .nm{font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0}
+.le .lk{font-weight:900;font-variant-numeric:tabular-nums;flex:none}
+.le .dl{font-size:11px;color:var(--mut);font-weight:700;flex:none;min-width:44px;text-align:right}
+
 /* ── Apačios juosta ──────────────────────────────────── */
 .tabs{position:fixed;left:0;right:0;bottom:0;height:calc(58px + var(--safe-b));padding-bottom:var(--safe-b);
   background:rgba(12,14,20,.94);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
@@ -230,6 +251,8 @@ body{background:var(--bg);color:var(--ink);font:15px/1.45 -apple-system,BlinkMac
         </div>
         <div class="pv-strip" id="pvStrip" title="Posūkių sunkumas maršrute"></div>
         <div class="pv-legend" id="pvLegend"></div>
+        <div id="pvLent"></div>
+        <button class="pv-toggle" id="pvShare" style="margin-bottom:6px">🔗 Dalintis trasa su draugais</button>
         <button class="pv-toggle" id="pvWet" style="margin-bottom:6px">🌧️ Šlapias kelias — išjungta</button>
         <button class="pv-toggle" id="pvToggle">Visi posūkiai iš eilės ▾</button>
         <div class="pv-list hide" id="pvList"></div>
@@ -261,11 +284,21 @@ body{background:var(--bg);color:var(--ink);font:15px/1.45 -apple-system,BlinkMac
     <div class="scroll" id="savedList"></div>
   </section>
 
+  <!-- ══ RATAS (paskyra, draugai, laikai, savos trasos) ══ -->
+  <section class="screen" id="s-ratas">
+    <div class="top">
+      <div><h1>Ratas</h1><div class="sub" id="ratasSub">Lenktyniauk su draugais</div></div>
+      <div class="pill" id="ratasPill" style="display:none">—</div>
+    </div>
+    <div class="scroll" id="ratasBody"></div>
+  </section>
+
   <nav class="tabs">
     <button data-s="map" class="on"><svg viewBox="0 0 24 24"><path d="M9 3 3 6v15l6-3 6 3 6-3V3l-6 3-6-3z"/><path d="M9 3v15M15 6v15"/></svg>Atrask</button>
     <button data-s="route"><svg viewBox="0 0 24 24"><circle cx="6" cy="19" r="2.5"/><circle cx="18" cy="5" r="2.5"/><path d="M8.5 19H14a4 4 0 0 0 0-8h-4a4 4 0 0 1 0-8h5.5"/></svg>Maršrutas</button>
     <button data-s="drive"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 12l4-3"/><circle cx="12" cy="12" r="1.6" fill="currentColor"/></svg>Važiuoti</button>
     <button data-s="saved"><svg viewBox="0 0 24 24"><path d="M6 3h12a1 1 0 0 1 1 1v17l-7-4-7 4V4a1 1 0 0 1 1-1z"/></svg>Išsaugota</button>
+    <button data-s="ratas"><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.2"/><path d="M3 20a6 6 0 0 1 12 0"/><path d="M16.5 5.5a3 3 0 0 1 0 5.6M18 20a6.5 6.5 0 0 0-2.5-5"/></svg>Ratas</button>
   </nav>
 </div>
 

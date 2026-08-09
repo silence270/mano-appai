@@ -1,9 +1,10 @@
 /* Šturmanas · service worker — veikia ir be interneto (išskyrus žemėlapio plyteles) */
-const V = 'sturmanas-v1';
+const V = 'sturmanas-v2';
 const SHELL = [
   './', './index.html', './manifest.json',
-  './js/app.js', './js/core.js', './js/router.js',
+  './js/app.js', './js/core.js', './js/router.js', './js/ratas.js', './js/debesis.js',
   './data/roads.json', './data/graph.json', './data/best.json',
+  './data/places.json', './data/tours.json',
   'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js',
   'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css',
 ];
@@ -20,6 +21,8 @@ self.addEventListener('activate', e => {
 
 self.addEventListener('fetch', e => {
   const url = new URL(e.request.url);
+  // Paskyros ir rezultatai — visada gyvai (talpinti prisijungimą būtų klaida)
+  if (url.hostname.endsWith('.supabase.co') || e.request.method !== 'GET') return;
   // žemėlapio plytelės — iš tinklo, bet talpinam paskutines
   if (url.hostname.includes('basemaps.cartocdn.com')) {
     e.respondWith(
