@@ -97,7 +97,7 @@ async function raktas() {
 
 /* ── REST ─────────────────────────────────────────────────── */
 
-async function rest(kelias, opt = {}) {
+async function rest(kelias, opt = {}, antras = false) {
   const t = await raktas();
   if (!t) throw new Error('Neprisijungta');
   const h = { apikey: KEY, Authorization: 'Bearer ' + t, 'Content-Type': 'application/json' };
@@ -105,6 +105,12 @@ async function rest(kelias, opt = {}) {
   const r = await fetch(`${URL_}/rest/v1/${kelias}`, { method: opt.method || 'GET', headers: h, body: opt.body });
   const tekstas = await r.text();
   const j = tekstas ? JSON.parse(tekstas) : null;
+  // 401 iškart po registracijos pasitaiko dėl laikrodžių skirtumo — su šviežiu
+  // raktu pakartojam. Užklausa neįvyko, tad dublikato nebus.
+  if (r.status === 401 && !antras && ses) {
+    ses.iki = 0;                            // priverčiam atnaujinti
+    return rest(kelias, opt, true);
+  }
   if (!r.ok) throw new Error(klaidosTekstas(j || {}, r.status));
   return j;
 }
