@@ -290,7 +290,14 @@ function drawPreview(r) {
   el('pvCorn').textContent = tot;
   el('pvStrip').innerHTML = [1,2,3,4,5,6]
     .map(x => sev[x] ? `<i style="width:${sev[x] / tot * 100}%;background:${SEV_COLOR[x]}"></i>` : '').join('');
+  // Tavo rezultatai šioje trasoje (pagal stabilų maršruto ID)
+  const h = routeHash(r);
+  const mano = JSON.parse(localStorage.sturmanas_runs || '[]').filter(x => x.hash === h && x.baigta);
+  const best = mano.length ? Math.min(...mano.map(x => x.sek)) : null;
   el('pvLegend').innerHTML =
+    (best != null
+      ? `<span style="color:#ffb300">🏁 Tavo geriausias: ${fmtSek(best)}</span><span>${mano.length} važiavimai</span>`
+      : '<span style="color:var(--mut)">Trasa dar neįveikta — laikas bus matuojamas nuo START</span>') +
     `<span style="color:${SEV_COLOR[sunkiausias]}">Sunkiausias: ${sunkiausias} · ${SEV_NAME[sunkiausias]}</span>` +
     `<span>${(r.cornersPerKm || 0).toFixed(1)} posūkių/km</span>` +
     `<span>${r.pavedPct}% asfalto</span>` +
@@ -438,6 +445,7 @@ function startDrive() {
   called.clear();
   driveRoute = route; routeCum = null;
   primeVoice();                       // iOS: be „pažadinimo" per paspaudimą balsas tyli visą kelionę
+  if (route) runStart(route);         // laikas skaičiuojamas nuo START
   el('driveIdle').classList.add('hide');
   el('drivePrev')?.classList.add('hide');
   el('btnDrive').textContent = '⏹ STOP';
@@ -451,6 +459,7 @@ function startDrive() {
 }
 
 function stopDrive() {
+  if (run && !run.finished) runFinish(false);   // sustabdyta anksčiau — įrašom kaip nebaigtą
   if (watchId != null) navigator.geolocation.clearWatch(watchId);
   watchId = null;
   if (simTimer) clearInterval(simTimer); simTimer = null;
@@ -478,6 +487,7 @@ function onPos(pos) {
 
 function updateDrive(la, lo, hd) {
   el('spd').textContent = Math.round(curSpeed);
+  runTick(curSpeed);
   driveMe.setLatLng([la, lo]);
   driveMap.setView([la, lo], 15, { animate: false });
   const snap = db.snap(la, lo, hd, 70);
@@ -578,6 +588,62 @@ function followAhead(snap, ahead) {
   return out.sort((a, b) => a.dist - b.dist);
 }
 
+/* ══ VAŽIAVIMO MATAVIMAS (asmeniniai rekordai; vėliau — palyginimas su draugais) ══ */
+
+/** Stabilus maršruto ID: ta pati trasa = tas pats raktas (ir kitame telefone). */
+function routeHash(r) {
+  const p = r.pts, N = 24;                    // 24 kontroliniai taškai — atsparu GPS triukšmui
+  let sig = Math.round(r.km * 10) + '|';
+  for (let i = 0; i < N; i++) {
+    const [la, lo] = p[Math.floor(i * (p.length - 1) / (N - 1))];
+    sig += la.toFixed(3) + ',' + lo.toFixed(3) + ';';
+  }
+  let h = 0;                                   // trumpas maišos kodas (djb2)
+  for (let i = 0; i < sig.length; i++) { h = ((h << 5) - h + sig.charCodeAt(i)) | 0; }
+  return 'r' + (h >>> 0).toString(36);
+}
+
+let run = null;   // {t0, hash, km, maxV, sumV, nV, jerk, lastV, finished}
+
+function runStart(r) {
+  run = { t0: Date.now(), hash: routeHash(r), km: r.km, maxV: 0, sumV: 0, nV: 0,
+          jerk: 0, lastV: null, finished: false };
+}
+/** Kiekvienas GPS taškas: greičiai + „sklandumas" (kuo mažiau blaškymosi, tuo geriau). */
+function runTick(v) {
+  if (!run || v == null) return;
+  run.maxV = Math.max(run.maxV, v);
+  run.sumV += v; run.nV++;
+  if (run.lastV != null) run.jerk += Math.abs(v - run.lastV);
+  run.lastV = v;
+}
+/** Pabaiga: išsaugom rezultatą ir pasakom, ar rekordas. */
+function runFinish(baigta) {
+  if (!run || run.nV < 5) { run = null; return; }
+  const sek = Math.round((Date.now() - run.t0) / 1000);
+  const rec = { hash: run.hash, t: Date.now(), sek, km: +run.km.toFixed(1),
+                vidV: Math.round(run.sumV / run.nV), maxV: Math.round(run.maxV),
+                sklandumas: Math.max(0, Math.round(100 - run.jerk / Math.max(1, run.nV) * 12)),
+                baigta: !!baigta };
+  const visi = JSON.parse(localStorage.sturmanas_runs || '[]');
+  const anksciau = visi.filter(x => x.hash === rec.hash && x.baigta);
+  visi.unshift(rec);
+  localStorage.sturmanas_runs = JSON.stringify(visi.slice(0, 200));
+  if (baigta) {
+    const geriausias = anksciau.length ? Math.min(...anksciau.map(x => x.sek)) : null;
+    if (geriausias == null) toast(`Trasa įveikta per ${fmtSek(sek)} — pirmas laikas!`);
+    else if (sek < geriausias) {
+      speak(voiceLT ? 'Naujas rekordas!' : 'New record!', true);
+      toast(`🏁 REKORDAS! ${fmtSek(sek)} (buvo ${fmtSek(geriausias)})`);
+    } else toast(`Finišas: ${fmtSek(sek)} · tavo geriausias ${fmtSek(geriausias)}`);
+  }
+  run = null;
+}
+function fmtSek(s) {
+  const m = Math.floor(s / 60), r = s % 60;
+  return m ? `${m}:${String(r).padStart(2, '0')}` : `${r} s`;
+}
+
 /** Važiuojant maršrutu: projekcija ant maršruto + kas priekyje. */
 function routeAhead(lat, lon, ahead) {
   const r = driveRoute;
@@ -599,7 +665,15 @@ function routeAhead(lat, lon, ahead) {
     out.push({ type: 'corner', ...c, dist: c.at - s });
   for (const h of r.hazards) if (h.at > s + 3 && h.at < s + ahead)
     out.push({ type: 'hazard', ...h, dist: h.at - s });
-  el('curInfo').textContent = `maršrute · liko ${fmtDist(Math.max(0, routeCum[routeCum.length - 1] - s))}`;
+  const liko = Math.max(0, routeCum[routeCum.length - 1] - s);
+  el('curInfo').textContent = `maršrute · liko ${fmtDist(liko)}`;
+  // Finišas: likus <60 m ir jau nuvažiavus bent pusę trasos (kad startas šalia finišo
+  // kilpoje iškart neužskaitytų pabaigos)
+  if (run && !run.finished && liko < 60 && s > routeCum[routeCum.length - 1] * 0.5) {
+    run.finished = true;
+    speak(voiceLT ? 'Finišas' : 'Finish', true);
+    runFinish(true);
+  }
   return out.sort((a, b) => a.dist - b.dist);
 }
 
@@ -764,6 +838,8 @@ function switchTo(s) {
   document.querySelectorAll('.tabs button').forEach(b => b.classList.toggle('on', b.dataset.s === s));
   if (s === 'map') setTimeout(() => map.invalidateSize(), 60);
   if (s === 'drive' && driveMap) setTimeout(() => driveMap.invalidateSize(), 60);
+  // Grįžus į „Važiuoti" — peržiūra perpiešiama (rezultatai galėjo pasikeisti po važiavimo)
+  if (s === 'drive' && route && !(watchId != null || simTimer)) drawPreview(route);
 }
 
 function renderBest() {
