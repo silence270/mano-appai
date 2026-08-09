@@ -1,7 +1,7 @@
 /* Šturmanas · valdiklis */
 'use strict';
 import { RoadDB, SEV_COLOR, SEV_NAME, HAZ_LT, HAZ_ICON, SURF_LT, PLACE, dist, bearing,
-         callText, callPhrase, callDistance, fmtDist, fmtDur } from './core.js';
+         callText, callPhrase, callDistance, fmtDist, fmtDur, tooFast, safeSpeed } from './core.js';
 import { Router, MODES } from './router.js';
 
 const $ = s => document.querySelector(s);
@@ -302,6 +302,8 @@ function drawPreview(r) {
     return `<div class="pv-row"><b style="color:${SEV_COLOR[c.sev]}">${c.sev}</b>` +
       `<span>${c.dir === 'L' ? '↰ kairė' : '↱ dešinė'}` +
       (c.shape === 'tightens' ? ', siaurėja' : c.shape === 'opens' ? ', atsiveria' : '') + '</span>' +
+      // Saugus greitis (šlapiam kelyje mažesnis) — matai, kur teks stabdyti
+      `<span style="color:var(--mut);font-size:12px">~${safeSpeed(c, wetMode)}</span>` +
       // Susilieję posūkiai (mažiau nei 25 m) — rodom kaip grandinę, ne „0 m"
       `<span class="pv-at">${c.at - prev < 25 ? '＋ iškart' : fmtDist(c.at - prev)}</span></div>`;
   }).join('') + (r.corners.length > 120 ? '<div class="pv-row">…</div>' : '');
@@ -414,6 +416,7 @@ window.__save = () => {
 };
 
 /* ── ŠTURMANAS: važiavimo režimas ──────────────────────────────────────── */
+let wetMode = localStorage.getItem('sturm_slapias') === '1';
 let watchId = null, voiceOn = true, called = new Set(), wakeLock = null, simTimer = null;
 let lastPos = null, curSpeed = 0;
 
@@ -499,7 +502,11 @@ function updateDrive(la, lo, hd) {
     if (it.dist <= lead) {
       called.add(key);
       const nxt = items[k + 1];
-      const txt = callPhrase(it, nxt, voiceLT);
+      let txt = callPhrase(it, nxt, voiceLT);
+      // Per greitai į posūkį — įspėjam PIRMIAU komandos (svarbiausia sauga:
+      // saugus greitis skaičiuojamas iš posūkio spindulio, šlapiam kelyje mažesnis).
+      if (txt && it.type === 'corner' && tooFast(it, curSpeed, wetMode))
+        txt = (voiceLT ? 'Atsargiai! ' : 'Caution! ') + txt;
       if (txt) speak(txt);
       // jei kitas iškart po šio — jį jau pasakėm, nekartojam
       if (nxt && nxt.type === 'corner' && nxt.dist - it.dist < 90)
@@ -714,6 +721,17 @@ function initUI() {
   el('btnVoice').onclick = () => {
     voiceOn = !voiceOn; el('btnVoice').textContent = voiceOn ? '🔊' : '🔇';
     if (voiceOn) speak(voiceLT ? 'Balsas įjungtas' : 'Voice on', true);
+  };
+  // Šlapias kelias: saugus posūkio greitis krenta ~24 %, tad įspėjimai anksčiau.
+  const wetLbl = () => el('pvWet').textContent = wetMode
+    ? '🌧️ Šlapias kelias — ĮJUNGTA' : '🌧️ Šlapias kelias — išjungta';
+  wetLbl();
+  el('pvWet').onclick = () => {
+    wetMode = !wetMode;
+    localStorage.setItem('sturm_slapias', wetMode ? '1' : '0');
+    wetLbl();
+    el('pvWet').style.color = wetMode ? '#4fc3f7' : '';
+    if (route) drawPreview(route);
   };
   // Peržiūros posūkių sąrašas — kaip „Directions" Maps'e: skaitai stovėdamas.
   el('pvToggle').onclick = () => {

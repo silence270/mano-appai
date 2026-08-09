@@ -204,13 +204,22 @@ const HAZ_SAY_EN = { bump: 'bump', camera: 'camera', railway: 'crossing',
                      stop: 'stop', giveway: 'give way', rumble: 'rumble' };
 
 /** Atstumas žodžiais: 150 -> „šimtas penkiasdešimt". */
+const LADDER = [50, 70, 100, 120, 150, 180, 200, 250, 300, 400, 500];
+/** Artimiausias „ralio" atstumas iš Jemba kopėtėlių (50/70/100/120/150/180/200/250…). */
+export function ladderDist(m) {
+  let best = LADDER[0];
+  for (const x of LADDER) if (Math.abs(x - m) < Math.abs(best - m)) best = x;
+  return best;
+}
+
 export function distWords(m, lt = true) {
-  const v = Math.round(m / 50) * 50;
+  const v = ladderDist(m);
   if (!lt) return String(v);
-  const H = { 0: '', 100: 'šimtas', 200: 'du šimtai', 300: 'trys šimtai', 400: 'keturi šimtai' };
-  const h = Math.floor(v / 100) * 100, r = v - h;
-  const rest = r === 50 ? 'penkiasdešimt' : '';
-  return [H[h] || '', rest].filter(Boolean).join(' ') || 'penkiasdešimt';
+  const W = { 50: 'penkiasdešimt', 70: 'septyniasdešimt', 100: 'šimtas', 120: 'šimtas dvidešimt',
+              150: 'šimtas penkiasdešimt', 180: 'šimtas aštuoniasdešimt', 200: 'du šimtai',
+              250: 'du šimtai penkiasdešimt', 300: 'trys šimtai', 400: 'keturi šimtai',
+              500: 'penki šimtai' };
+  return W[v] || String(v);
 }
 
 /**
@@ -241,6 +250,21 @@ export function callPhrase(item, next, lt = true) {
   if (next && next.dist - item.dist < 90 && next.type === 'corner')
     s += (lt ? ' ir tuoj ' : ' into ') + callText(next, lt);
   return s;
+}
+
+/**
+ * Saugus posūkio greitis. Sausas kelias — kaip suskaičiuota (µ≈0,7);
+ * šlapias — µ≈0,4, tad greitis mažėja √(0,4/0,7) ≈ 0,76 karto.
+ */
+export function safeSpeed(corner, wet = false) {
+  const v = corner && corner.v ? corner.v : 999;
+  return wet ? Math.round(v * 0.76) : v;
+}
+
+/** Ar lekiam per greitai į posūkį (0,9 saugaus greičio — dar spėji stabdyti). */
+export function tooFast(corner, speedKmh, wet = false) {
+  const s = safeSpeed(corner, wet);
+  return s < 900 && speedKmh > s * 0.9;
 }
 
 /** Kada kviesti: pagal laiką iki posūkio (šturmanas kviečia iš anksto). */
