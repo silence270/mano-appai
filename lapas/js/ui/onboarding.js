@@ -31,6 +31,13 @@ export function renderOnboarding(ctx) {
       </div>
 
       <div class="field">
+        <label id="ob-by">${esc(t('onb_birth_year'))}</label>
+        <input type="number" id="ob-year" inputmode="numeric" min="1960" max="${new Date().getFullYear() - 9}"
+               placeholder="${esc(t('onb_skip'))}">
+        <div class="hint" id="ob-why">${esc(t('birth_year_why'))}</div>
+      </div>
+
+      <div class="field">
         <label id="ob-cl">${esc(t('onb_cycle_len'))}</label>
         <div class="stepper" id="ob-cycle">
           <button data-d="-1">−</button>
@@ -49,6 +56,9 @@ export function renderOnboarding(ctx) {
     $('#ob-intro', node).textContent = t('onb_intro');
     $('#ob-lp', node).textContent = t('onb_last_period');
     $('#ob-cl', node).textContent = t('onb_cycle_len');
+    $('#ob-by', node).textContent = t('onb_birth_year');
+    $('#ob-why', node).textContent = t('birth_year_why');
+    $('#ob-year', node).placeholder = t('onb_skip');
     $('#ob-go', node).textContent = t('onb_start');
     $('#ob-backup', node).textContent = t('onb_backup');
     $('#ob-days', node).textContent = t('ins_days');
@@ -72,7 +82,8 @@ export function renderOnboarding(ctx) {
 
   $('#ob-go', node).onclick = async () => {
     lastPeriod = $('#ob-date', node).value;
-    await ctx.onDone({ lang, cycleLen, lastPeriod });
+    const by = parseInt($('#ob-year', node).value, 10);
+    await ctx.onDone({ lang, cycleLen, lastPeriod, birthYear: Number.isFinite(by) ? by : null });
   };
 
   return node;

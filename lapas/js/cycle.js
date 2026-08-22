@@ -4,10 +4,11 @@
  * Tas pats failas veikia naršyklėje ir `node --test` testuose.
  *
  * Pagrindiniai principai:
- *  - Prognozė remiasi SVERTINE MEDIANA (naujesni ciklai sveria daugiau), ne vidurkiu:
- *    vienas 60 dienų ciklas po ligos neturi sugriauti visos prognozės.
- *  - Ovuliacija skaičiuojama ATGAL nuo kitų mėnesinių (liuteininė fazė stabili ~13 d.),
- *    o ne „ciklo vidurys" — tai vienintelis būdas teisingai prognozuoti netaisyklingą ciklą.
+ *  - Prognozę skaičiuoja predict.js: log-normalus Bajeso modelis, kuris mokosi
+ *    iš pačios moters ciklų ir grąžina ne dieną, o intervalą su pasitikėjimo lygiu.
+ *  - Ovuliacija imama iš Johnson 2018 lentelės (949 moterys, kasdienis LH),
+ *    o NE iš „ciklo ilgis minus 14": ta taisyklė trumpiems ciklams nustumia
+ *    ovuliaciją per anksti apie 4 dienas, ir tik ~24 % ovuliacijų įvyksta 14–15 d.
  *  - Kūno požymiai (BBT, gleivės, LH) VIRŠIJA kalendorių: jei temperatūra patvirtino
  *    ovuliaciją, kalendoriaus spėjimas atmetamas.
  *  - Kur duomenų per mažai — grąžinamas platus langas ir žemas `confidence`,
@@ -15,6 +16,8 @@
  */
 
 'use strict';
+
+import * as P from './predict.js';
 
 // ---------------------------------------------------------------- konstantos
 
@@ -41,7 +44,7 @@ export const DEFAULT_CYCLE = 28;
 export const DEFAULT_PERIOD = 5;
 /** Liuteininė fazė = dienų PO ovuliacijos iki kitų mėnesinių.
  *  28 d. ciklas su 14 d. liuteinine → ovuliacija 14-ą ciklo dieną. */
-export const DEFAULT_LUTEAL = 14;
+export const DEFAULT_LUTEAL = 12;   // Bull 2019: 12,4 ± 2,4 d (NE 14)
 const LUTEAL_MIN = 9, LUTEAL_MAX = 17;
 
 /** Vaisingas langas: spermatozoidai gyvena iki 5 d., kiaušinėlis ~1 d. */
@@ -226,7 +229,7 @@ export function lhSurge(days, cycleDays) {
  * Sujungta ovuliacijos data vienam ciklui — kūnas viršija kalendorių.
  * @returns {{date:string, source:'bbt'|'lh'|'mucus'|'calendar', confirmed:boolean}|null}
  */
-export function ovulationFor(days, cycleDays, predictedNextPeriod, lutealDays) {
+export function ovulationFor(days, cycleDays, cycleStart, predictedLength, lutealDays) {
   const bbt = bbtShift(days, cycleDays);
   if (bbt) return { date: bbt.ovulation, source: 'bbt', confirmed: true, coverline: bbt.coverline };
 
@@ -234,17 +237,20 @@ export function ovulationFor(days, cycleDays, predictedNextPeriod, lutealDays) {
   if (lh) return { date: lh, source: 'lh', confirmed: false };
 
   const peak = mucusPeak(days, cycleDays);
-  if (peak) return { date: peak, source: 'mucus', confirmed: false };
+  if (peak) return { date: addDays(peak, 1), source: 'mucus', confirmed: false };
 
-  if (predictedNextPeriod) {
-    return { date: ovulationDate(predictedNextPeriod, lutealDays), source: 'calendar', confirmed: false };
+  if (predictedLength && cycleStart) {
+    // Johnson 2018 lentelė vietoj „ilgis minus 14". Jei iš patvirtintų ovuliacijų
+    // jau žinome jos pačios liuteininę fazę, ji svarbesnė už populiacijos lentelę.
+    const known = lutealDays && lutealDays !== DEFAULT_LUTEAL;
+    // abi šakos grąžina CIKLO DIENĄ (1 = pirma mėnesinių diena)
+    const cycleDay = known
+      ? predictedLength - lutealDays
+      : P.ovulationDay(predictedLength).day;
+    return { date: addDays(cycleStart, Math.round(cycleDay) - 1), source: 'calendar',
+             confirmed: false, personal: !!known };
   }
   return null;
-}
-
-/** Ovuliacijos data iš mėnesinių datos: tarp jų telpa dar `luteal` pilnų dienų. */
-export function ovulationDate(nextPeriod, lutealDays) {
-  return addDays(nextPeriod, -(lutealDays + 1));
 }
 
 /** Reali liuteininė fazė iš patvirtintų ovuliacijų — asmeninė, ne vadovėlinė. */
@@ -278,68 +284,70 @@ export function analyze({ days = {}, settings = {}, today = todayISO() } = {}) {
   const eps = periodEpisodes(days);
   const cycles = cyclesFrom(days);
   const valid = cycles.filter(c => c.valid);
-  const recent = valid.slice(-HISTORY);
+  const recent = valid.slice(-24);
   const lengths = recent.map(c => c.length);
 
-  // --- vidutinis ciklas
-  let avgCycle, sigma, confidence, basis;
-  if (lengths.length >= 2) {
-    const w = decayWeights(lengths.length);
-    avgCycle = Math.round(weightedMedian(lengths, w));
-    sigma = robustSigma(lengths);
-    basis = 'history';
-    confidence = lengths.length >= 3 && sigma <= 2 ? 'high'
-               : sigma <= 5 ? 'medium' : 'low';
-  } else if (lengths.length === 1) {
-    avgCycle = lengths[0];
-    sigma = 4;
-    basis = 'single';
-    confidence = 'low';
-  } else {
-    avgCycle = clamp(settings.avgCycle ?? DEFAULT_CYCLE, CYCLE_MIN, CYCLE_MAX);
-    sigma = 4;
-    basis = 'default';
-    confidence = 'low';
-  }
+  const age = ageFrom(settings.birthYear, today);
+  const opts = { age, bmi: settings.bmi ?? null, usualLength: settings.avgCycle ?? null };
 
-  // --- mėnesinių trukmė
-  const epLens = eps.slice(-HISTORY).map(e => e.length);
-  const avgPeriod = epLens.length
-    ? Math.round(weightedMedian(epLens, decayWeights(epLens.length)))
-    : clamp(settings.avgPeriod ?? DEFAULT_PERIOD, 1, 14);
-
-  // --- prognozės paklaida dienomis
-  const window = clamp(Math.round(sigma), 1, 7);
+  const post = P.fit(lengths, opts);
+  const base = P.predict(post, 0.8);
 
   const lastPeriod = eps.length ? eps[eps.length - 1].start : null;
   const cycleStart = lastPeriod;
   const dayOfCycle = cycleStart ? daysBetween(cycleStart, today) + 1 : null;
 
-  // Jei šiandien esame giliai už prognozuoto ciklo (>CYCLE_MAX), žymėjimas nutrūkęs —
-  // nerodom „vėluoja 200 dienų", o sakom, kad duomenys pasenę.
-  const stale = dayOfCycle != null && dayOfCycle > CYCLE_MAX;
+  // Ar dabartinis „ciklas" iš tikrųjų yra keli nepažymėti ciklai?
+  const skipped = dayOfCycle != null ? P.looksSkipped(dayOfCycle, lengths) : null;
+  const stale = dayOfCycle != null && (dayOfCycle > CYCLE_MAX || !!skipped);
+
+  // Prognozė ciklui vykstant: žinome, kad mėnesinės dar neprasidėjo, tad
+  // skirstinys nupjaunamas ties šiandiena. Būtent čia modelis nurungia vidurkį.
+  const live = cycleStart && !stale ? P.predictGiven(post, dayOfCycle - 1, 0.8) : base;
+
+  const avgCycle = Math.round(base.median);
+  const sigma = base.sigmaDays;
+  const window = clamp(Math.round((live.hi - live.lo) / 2), 1, 21);
+
+  const epLens = eps.slice(-24).map(e => e.length);
+  const avgPeriod = epLens.length
+    ? Math.round(P.median(epLens))
+    : clamp(settings.avgPeriod ?? DEFAULT_PERIOD, 1, 14);
 
   const lutealDays = lutealLength(days, valid);
+  const spread = P.cld(lengths);
 
   let nextPeriod = null, nextPeriodRange = null, ovulation = null, fertile = null;
   if (cycleStart && !stale) {
-    nextPeriod = addDays(cycleStart, avgCycle);
-    nextPeriodRange = { from: addDays(nextPeriod, -window), to: addDays(nextPeriod, window) };
+    nextPeriod = addDays(cycleStart, Math.round(live.median));
+    nextPeriodRange = { from: addDays(cycleStart, Math.round(live.lo)),
+                        to: addDays(cycleStart, Math.round(live.hi)) };
 
     const cycleDays = rangeDays(cycleStart, today);
-    const ov = ovulationFor(days, cycleDays, nextPeriod, lutealDays);
+    const ov = ovulationFor(days, cycleDays, cycleStart, base.median, lutealDays);
     if (ov) {
       ovulation = ov;
+      const sd = ov.confirmed ? 0.6 : P.ovulationUncertainty(sigma);
+      const ovDay = daysBetween(cycleStart, ov.date);   // poslinkis nuo ciklo pradžios
+      const w = P.fertileWindow(ovDay, ov.source === 'calendar' ? sd : Math.min(sd, 1.6), 0.8);
       fertile = {
-        from: addDays(ov.date, -FERTILE_BEFORE),
-        to: addDays(ov.date, FERTILE_AFTER),
+        from: addDays(cycleStart, Math.round(w.from)),
+        to: addDays(cycleStart, Math.round(w.to)),
+        core: { from: addDays(ov.date, -5), to: ov.date },
+        sd: +sd.toFixed(2),
       };
     }
   }
 
   const daysUntilPeriod = nextPeriod ? daysBetween(today, nextPeriod) : null;
-  const late = daysUntilPeriod != null && daysUntilPeriod < 0 && !stale
-    ? -daysUntilPeriod : 0;
+  // Vėlavimas matuojamas nuo pradinės (ciklo pradžioje duotos) prognozės — sąlyginė
+  // prognozė ciklui vykstant visada slenka į priekį, tad pagal ją niekada nevėluotum.
+  const expected = cycleStart && !stale ? addDays(cycleStart, Math.round(base.median)) : null;
+  const late = expected && !stale ? Math.max(0, daysBetween(expected, today)) : 0;
+
+  const quality = dataQuality({ lengths, spread, age, settings, today, cycleStart, dayOfCycle, skipped });
+  const confidence = quality.level === 'none' ? 'low'
+    : window <= 2 ? 'high' : window <= 5 ? 'medium' : 'low';
 
   const phase = currentPhase({
     days, today, cycleStart, dayOfCycle, avgPeriod,
@@ -347,22 +355,59 @@ export function analyze({ days = {}, settings = {}, today = todayISO() } = {}) {
   });
 
   return {
-    today,
-    days,
+    today, days,
     mode: settings.mode || 'track',
-    cycleStart,
-    dayOfCycle: stale ? null : dayOfCycle,
-    stale,
-    avgCycle, avgPeriod, sigma: sigma == null ? null : +sigma.toFixed(2),
-    window, confidence, basis,
-    lutealDays,
+    cycleStart, dayOfCycle: stale ? null : dayOfCycle, stale, skipped,
+    avgCycle, avgPeriod, sigma: +sigma.toFixed(2), spread,
+    window, confidence, quality,
+    basis: lengths.length >= 2 ? 'history' : lengths.length ? 'single' : 'default',
+    lutealDays, age,
     cycles, validCycles: valid, episodes: eps,
     nextPeriod, nextPeriodRange,
     ovulation, fertile,
     daysUntilPeriod, late,
     phase,
+    post, prediction: live,
     pregnancy: settings.mode === 'pregnancy'
       ? pregnancyInfo(settings.pregnancyStart || lastPeriod, today) : null,
+  };
+}
+
+/** Amžius iš gimimo metų. Prognozės prior priklauso nuo amžiaus (Bull 2019). */
+export function ageFrom(birthYear, today = todayISO()) {
+  if (!birthYear) return null;
+  const age = +today.slice(0, 4) - birthYear;
+  return age >= 9 && age <= 65 ? age : null;
+}
+
+/**
+ * Kada app'as privalo pasakyti „nežinau" vietoj netikros prognozės.
+ * Kiekviena priežastis paremta literatūra — žr. README-MOKSLAS.md.
+ * @returns {{level:'none'|'weak'|'ok', reasons:string[]}}
+ */
+export function dataQuality({ lengths, spread, age, settings, today, cycleStart, dayOfCycle, skipped }) {
+  const reasons = [];
+
+  if (lengths.length < 3) reasons.push('few_cycles');            // <3 ciklų — nėra iš ko vertinti kintamumo
+  if (spread != null && spread >= 6) reasons.push('irregular');  // median(CLD) ≥ 6 d — 31 % moterų
+  if (lengths.length >= 3) {
+    const short = lengths.filter(l => l < 21).length;
+    const long = lengths.filter(l => l > 38).length;
+    if (short >= 2 || long >= 2) reasons.push('out_of_range');   // FIGO: <24 trumpas, >38 ilgas
+  }
+  if (age != null && age >= 45 && spread != null && spread >= 7) reasons.push('perimenopause');
+  if (age != null && age < 20) reasons.push('young');            // nusistovi ~6 ginekologiniais metais
+  if (settings.mode === 'postpartum' || settings.postpartumUntil) reasons.push('postpartum');
+  if (settings.contraceptionStoppedAt &&
+      daysBetween(settings.contraceptionStoppedAt, today) < 60) reasons.push('after_hormones');
+  if (skipped) reasons.push('maybe_skipped');
+  if (cycleStart && dayOfCycle > 90) reasons.push('very_long');  // >90 d — ne prognozės klausimas
+
+  const blocking = reasons.some(r =>
+    ['few_cycles', 'perimenopause', 'after_hormones', 'very_long', 'maybe_skipped'].includes(r));
+  return {
+    level: reasons.length === 0 ? 'ok' : blocking ? 'none' : 'weak',
+    reasons,
   };
 }
 
@@ -375,7 +420,8 @@ function currentPhase({ days, today, cycleStart, dayOfCycle, avgPeriod,
   if (dayOfCycle <= avgPeriod && (days[today]?.flow ?? 0) > 0) return PHASE.MENSTRUAL;
 
   if (ovulation && ovulation.date === today) return PHASE.OVULATION;
-  if (fertile && daysBetween(fertile.from, today) >= 0 && daysBetween(today, fertile.to) >= 0)
+  const core = fertile?.core;
+  if (core && daysBetween(core.from, today) >= 0 && daysBetween(today, core.to) >= 0)
     return PHASE.FERTILE;
 
   if (nextPeriod && daysBetween(today, nextPeriod) <= PMS_DAYS && daysBetween(today, nextPeriod) >= 0)
@@ -444,7 +490,7 @@ export function paintRange(state, from, to) {
     for (let k = -window; k <= window; k++) mark(addDays(next, k), 'period-window', true);
     for (let k = 0; k < avgPeriod; k++) mark(addDays(next, k), 'period', true);
 
-    const ov = ovulationDate(next, lutealDays);
+    const ov = addDays(next, Math.round(P.ovulationDay(avgCycle).day) - 1);
     for (let k = -5; k <= 1; k++) mark(addDays(ov, k), 'fertile', true);
     mark(ov, 'ovulation', true);
 
@@ -458,6 +504,38 @@ export function paintRange(state, from, to) {
     if (state.ovulation) mark(state.ovulation.date, 'ovulation', pred);
   }
   return out;
+}
+
+/**
+ * Kiek app'as klysta BŪTENT ŠIAI moteriai.
+ *
+ * Skaičiuojama retrospektyviai: kiekvienam ciklui prognozė sudaroma tik iš
+ * ankstesnių ciklų, tada lyginama su tuo, kas iš tikrųjų įvyko. Nieko saugoti
+ * nereikia, ir skaičius teisingas net ką tik įkėlus duomenis iš kito telefono.
+ *
+ * @returns {{n:number, mae:number, coverage:number, errors:number[]}|null}
+ */
+export function calibration(state, minHistory = 3) {
+  const lengths = state.validCycles.map(c => c.length);
+  if (lengths.length < minHistory + 2) return null;
+
+  const errors = [];
+  let covered = 0;
+  const opts = { age: state.age, usualLength: null };
+  for (let i = minHistory; i < lengths.length; i++) {
+    const past = lengths.slice(0, i);
+    const pred = P.predict(P.fit(past, opts), 0.8);
+    const actual = lengths[i];
+    errors.push(actual - pred.median);
+    if (actual >= pred.lo && actual <= pred.hi) covered++;
+  }
+  const abs = errors.map(Math.abs).sort((a, b) => a - b);
+  return {
+    n: errors.length,
+    mae: +P.median(abs).toFixed(1),
+    coverage: +(covered / errors.length).toFixed(2),
+    errors: errors.map(e => +e.toFixed(1)),
+  };
 }
 
 // ------------------------------------------------------------- įžvalgos
@@ -515,7 +593,7 @@ export function dayPhaseMap(days, state) {
   for (const c of cycles) {
     if (!c.valid) continue;
     const cd = rangeDays(c.start, addDays(c.next, -1));
-    const ov = ovulationFor(days, cd, c.next, state.lutealDays);
+    const ov = ovulationFor(days, cd, c.start, c.length, state.lutealDays);
     const periodEnd = c.start;
     for (const d of cd) {
       const n = daysBetween(c.start, d) + 1;

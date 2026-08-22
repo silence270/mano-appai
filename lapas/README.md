@@ -16,19 +16,28 @@ paspaudi „Atsisiųsti kopiją" arba perkeli QR kodais.
 
 ## Kaip veikia prognozė
 
-Ne „28 dienos minus 14". Variklis (`js/cycle.js`) mokosi iš tavo pačios ciklų:
+Ne „28 dienos minus 14" — ta taisyklė tinka 13 % ciklų. Variklis (`js/predict.js`)
+yra log-normalus hierarchinis Bajeso modelis, kuris mokosi iš tavo pačios ciklų:
 
-- **Svertinė mediana** — naujesni ciklai sveria daugiau (`DECAY = 0.85`), tad vienas
-  60 dienų ciklas po ligos nesugriauna prognozės.
-- **Robustiška sklaida** (MAD × 1.4826) → prognozė rodoma kaip **diapazonas**,
-  ne kaip viena diena. Kuo netaisyklingesni ciklai, tuo platesnis langas ir žemesnis
-  `confidence` — geriau pasakyti „nežinau tiksliai" nei meluoti.
-- **Ovuliacija skaičiuojama atgal** nuo kitų mėnesinių per liuteininę fazę, kuri yra
-  stabilesnė už folikulinę. Asmeninė liuteininės fazės trukmė išmokstama iš patvirtintų
-  ovuliacijų (`lutealLength`).
-- **Kūnas viršija kalendorių**: BBT „3 virš 6" taisyklė > LH testas > gleivių peak day >
-  kalendorinis spėjimas.
-- **Nutrūkęs žymėjimas** (`stale`) rodomas kaip nutrūkęs, o ne „vėluoja 200 dienų".
+- **Šaltas startas iš populiacijos**, bet su kiekvienu ciklu populiacijos svoris krenta
+  (po 4 ciklų ~27 %, po 12 — ~11 %). Nurodžius savo įprastą ciklą, prior centras — jis.
+- **Prior priklauso nuo amžiaus**: ciklas trumpėja ~0,18 d. per metus, o po 45 m.
+  kintamumas šoka aukštyn.
+- **Prognozė yra intervalas, ne diena.** Stjudento t posterior prediktyvusis skirstinys.
+  Kuo netaisyklingesni ciklai, tuo platesnis langas.
+- **Ciklui vykstant prognozė atsinaujina** — skirstinys nupjaunamas ties šiandiena.
+  Būtent čia modelis nurungia paprastą vidurkį.
+- **Anomalūs ciklai nusveriami, ne šalinami** (Huber su MAD masteliu): šalinimas
+  dirbtinai susiaurintų intervalą, o tai pavojingiausias gedimo būdas.
+- **Trendas trumpina atmintį** — po gimdymo ar perimenopauzėje ciklai nuosekliai kinta,
+  ir sena istorija tik trukdo.
+- **Ovuliacija imama iš Johnson 2018 LH lentelės**, o ne atimtimi. Kūno požymiai
+  (BBT, LH, gleivės) viršija kalendorių.
+- **Kai duomenų nepakanka, taškinė diena nerodoma.** Vietoj jos — langas ir priežastis.
+- **App'as matuoja savo paklaidą** ir rodo ją: „paskutinės 7 prognozės: vidutiniškai
+  suklydome 1,2 d."
+
+Kiekvienos konstantos šaltinis — [MOKSLAS.md](MOKSLAS.md).
 
 ## Perkėlimas į kitą telefoną
 
@@ -48,7 +57,8 @@ Be interneto: senas telefonas rodo animuotą QR srautą, naujas nuskaito kamera.
 lapas/
 ├── index.html  styles.css  sw.js  manifest.json
 ├── js/
-│   ├── cycle.js      ← prognozės variklis (grynas, be DOM — testuojamas node'e)
+│   ├── predict.js    ← Bajeso prognozės matematika (gryna, testuojama node'e)
+│   ├── cycle.js      ← ciklai, fazės, kalendorius, duomenų kokybė
 │   ├── db.js         ← IndexedDB, pasirenkamas šifravimas PIN'u
 │   ├── crypto.js     ← PBKDF2 + AES-GCM
 │   ├── transfer.js   ← eksportas, importas, QR srautas
@@ -66,7 +76,7 @@ lapas/
 node tools/dev-server.mjs 8132     # serveris be cache
 open http://localhost:8132/lapas/tools/preview.html   # visų ekranų stendas
 open http://localhost:8132/lapas/tools/seed.html      # testiniai duomenys
-npm test                            # 42 testai
+npm test                            # 74 testai
 ```
 
 Ikonos pergeneruojamos: `node tools/make-icons.mjs`

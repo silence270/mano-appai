@@ -3,7 +3,7 @@
 'use strict';
 
 import { el, esc, ICON } from './dom.js';
-import { t, formatDate, getLang, cycleCount } from '../i18n.js';
+import { t, formatDate, formatRange, getLang, cycleCount } from '../i18n.js';
 import * as C from '../cycle.js';
 import { FLOW_LEVELS, labelOf, fetusSize } from '../catalog.js';
 
@@ -53,8 +53,21 @@ function phaseClass(phase) {
   return [C.PHASE.FERTILE, C.PHASE.OVULATION].includes(phase) ? 'sage' : '';
 }
 
+/** Kodėl prognozės nerodome — sąrašas priežasčių žmogaus kalba. */
+function unknownCard(state) {
+  const rs = state.quality.reasons.filter(r => r !== 'irregular' || state.quality.level === 'none');
+  return `<div class="card">
+    <h2>${esc(t('unknown_title'))}</h2>
+    <div style="font-size:14.5px;line-height:1.5;color:var(--ink-2)">${esc(t('unknown_intro'))}</div>
+    <div class="list" style="margin-top:10px">
+      ${rs.map(r => `<div class="item"><span class="ico">·</span>
+        <span class="txt"><b style="font-weight:600;font-size:14px">${esc(t('q_' + r))}</b></span></div>`).join('')}
+    </div>
+  </div>`;
+}
+
 function prediction(state) {
-  if (state.stale) {
+  if (state.stale && !state.skipped) {
     return `<div class="headline"><div class="big">${esc(t('stale_title'))}</div>
       <div class="small">${esc(t('stale_note'))}</div></div>`;
   }
@@ -62,24 +75,33 @@ function prediction(state) {
     return `<div class="headline"><div class="big">${esc(t('no_data_yet'))}</div>
       <div class="small">${esc(t('start_hint'))}</div></div>`;
   }
+
+  const r = state.nextPeriodRange;
+
+  // Kai duomenų nepakanka, taškinė diena būtų apsimestinis tikslumas — rodom tik langą.
+  if (state.quality.level === 'none') {
+    return `<div class="headline">
+      <div class="big" style="font-size:18px">${esc(r && r.from !== r.to
+        ? t('period_maybe_range', { range: formatRange(r.from, r.to) })
+        : t('no_data_yet'))}</div>
+    </div>`;
+  }
+
   const n = state.daysUntilPeriod;
   let big;
   if (state.late > 0) big = `<div class="big late">${esc(t('late_by', { n: state.late }))}</div>`;
   else if (n === 0) big = `<div class="big">${esc(t('period_today'))}</div>`;
   else if (n === 1) big = `<div class="big">${esc(t('period_tomorrow'))}</div>`;
   else big = `<div class="big">${esc(t('period_in_days', { n }))}</div>`;
-
-  const r = state.nextPeriodRange;
-  const range = r && state.window > 0
-    ? `${t('probably')}: ${formatDate(r.from)} – ${formatDate(r.to)}`
-    : formatDate(state.nextPeriod);
-
-  const basis = state.basis === 'default'
-    ? t('based_on_default', { n: state.avgCycle })
-    : t('based_on_cycles', { c: cycleCount(state.validCycles.length) });
+  // Diena rodoma kartu su langu — taškinė prognozė be neapibrėžtumo yra pažadas,
+  // kurio modelis negali ištesėti.
+  const lines = [t('likely_on', { date: formatDate(state.nextPeriod) })];
+  if (r && r.from !== r.to) {
+    lines.push(t('window_80', { range: formatRange(r.from, r.to) }));
+  }
 
   return `<div class="headline">${big}
-    <div class="small">${esc(range)} · ${esc(t('confidence_' + state.confidence))} ${esc(basis)}</div>
+    <div class="small">${esc(lines.join(' · '))}</div>
   </div>`;
 }
 
@@ -113,10 +135,11 @@ function ttcCard(state) {
     : toOv > 0 ? t('ttc_days_to_ov', { n: toOv })
     : t('ttc_after_ov', { n: -toOv });
 
-  const source = ovulation.confirmed ? t('ttc_confirmed')
-    : ovulation.source === 'lh' ? t('ttc_by_lh')
-    : ovulation.source === 'mucus' ? t('ttc_by_mucus')
-    : t('ttc_predicted');
+  const source = ovulation.confirmed ? t('ov_source_bbt')
+    : ovulation.source === 'lh' ? t('ov_source_lh')
+    : ovulation.source === 'mucus' ? t('ov_source_mucus')
+    : ovulation.personal ? t('ov_source_personal')
+    : t('ov_source_calendar');
 
   const tip = ovulation.confirmed ? ''
     : toOv > 0 && toOv <= 5 ? t('ttc_tip_lh')
@@ -130,11 +153,13 @@ function ttcCard(state) {
       <span style="font-size:12.5px;color:var(--ink-3);font-weight:600">${esc(source)}</span>
     </div>
     <div class="stats" style="margin-top:14px">
-      <div class="stat flat"><div class="k">${esc(t('phase_ovulation'))}</div>
-        <div class="v" style="font-size:17px">${esc(formatDate(ovulation.date))}</div></div>
-      <div class="stat flat"><div class="k">${esc(t('legend_fertile'))}</div>
+      <div class="stat flat"><div class="k">${esc(t('fertile_core'))}</div>
+        <div class="v" style="font-size:17px">${esc(fertile.core.from.slice(5))} – ${esc(fertile.core.to.slice(5))}</div></div>
+      <div class="stat flat"><div class="k">${esc(t('fertile_wide'))}</div>
         <div class="v" style="font-size:17px">${esc(fertile.from.slice(5))} – ${esc(fertile.to.slice(5))}</div></div>
     </div>
+    ${!ovulation.confirmed && fertile.sd >= 1.5
+      ? `<div class="note">${esc(t('ov_precision', { n: Math.round(fertile.sd) }))}</div>` : ''}
     ${tip ? `<div class="note">${esc(tip)}</div>` : ''}
   </div>`;
 }
@@ -226,6 +251,12 @@ export function renderToday(ctx) {
         ${prediction(state)}
       </div>`}
 
+    ${state.skipped ? `<div class="note warn note-row">
+      <span>${esc(t('skipped_ask', { n: C.daysBetween(state.cycleStart, state.today) + 1 }))}</span>
+      <button class="btn sm ghost" data-act="log">${esc(t('skipped_yes'))}</button></div>` : ''}
+    ${state.quality.level === 'none' && !isPregnancy ? unknownCard(state) : ''}
+    ${state.quality.level === 'weak' && !isPregnancy
+      ? `<div class="note">${state.quality.reasons.map(r => esc(t('q_' + r))).join(' ')}</div>` : ''}
     ${state.mode === 'ttc' ? ttcCard(state) : ''}
     ${state.mode === 'contraception' ? pillCard(state, entry) : ''}
 
@@ -243,7 +274,7 @@ export function renderToday(ctx) {
 
     ${todaySummary(entry)}
 
-    <div class="foot-note">${esc(t('disclaimer_short'))}</div>
+    <div class="foot-note">${esc(t('disc_not_contraception'))}</div>
   </div>`);
 
   node.querySelector('[data-act="log"]')?.addEventListener('click', () => ctx.onLog(state.today));

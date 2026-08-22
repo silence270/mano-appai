@@ -77,6 +77,52 @@ const LT = {
   preg_week: '{n} savaitė', preg_day_of_week: '{n} d.', preg_due: 'Terminas',
   preg_left: 'Liko {n} d.', preg_trimester: '{n} trimestras', preg_start: 'Paskutinių mėnesinių pradžia',
   preg_size: 'Vaisius maždaug kaip', preg_end: 'Baigti nėštumo režimą',
+  // prognozės kokybė ir sąžiningumas
+  likely_on: 'Tikimiausia {date}',
+  window_80: '80 % tikimybė — {range}',
+  period_maybe_range: 'Mėnesinės kažkur {range}',
+  ov_source_bbt: 'patvirtinta temperatūra',
+  ov_source_lh: 'pagal LH testą',
+  ov_source_mucus: 'pagal gleives',
+  ov_source_calendar: 'spėjama pagal ciklą',
+  ov_source_personal: 'pagal tavo liuteininę fazę',
+  ov_precision: 'Ovuliacijos diena spėjama ±{n} d. Tiksliai ją parodo tik LH testas ar temperatūra.',
+  fertile_wide: 'Galimos vaisingos dienos',
+  fertile_core: 'Didžiausia tikimybė',
+  unknown_title: 'Kol kas neprognozuojame',
+  unknown_intro: 'Geriau pasakyti „nežinau" nei parodyti dieną, kuria negalima pasitikėti.',
+  q_few_cycles: 'Per mažai ciklų — reikia bent trijų.',
+  q_irregular: 'Tavo ciklai svyruoja 6 ir daugiau dienų. Prognozė galima, bet tik plačiu langu.',
+  q_out_of_range: 'Ciklai pakartotinai trumpesni nei 21 d. arba ilgesni nei 38 d.',
+  q_perimenopause: 'Po 45 m. ciklai natūraliai tampa nenuspėjami. Tai normalu, bet prognozė nustoja veikti.',
+  q_young: 'Pirmaisiais metais po pirmųjų mėnesinių ciklas dar nusistovi.',
+  q_postpartum: 'Po gimdymo ciklas grįžta nevienodai.',
+  q_after_hormones: 'Nutraukus hormoninę kontracepciją ciklas nusistovi maždaug per 2–3 mėnesius.',
+  q_maybe_skipped: 'Panašu, kad kelios mėnesinės liko nepažymėtos.',
+  q_very_long: 'Nuo paskutinių mėnesinių praėjo daugiau nei 90 dienų. Verta pasitarti su gydytoja.',
+  skipped_ask: 'Šis ciklas jau {n} diena — ilgiau nei bet kuris ankstesnis. Gal nepamiršai pažymėti mėnesinių?',
+  skipped_yes: 'Pažymėti mėnesines', skipped_no: 'Ne, ciklas tikrai toks',
+  // kalibravimas
+  cal_title: 'Kiek tiksliai spėjame',
+  cal_line: 'Paskutinės {n} prognozės: vidutiniškai suklydome {mae} d.',
+  cal_coverage: 'Į nurodytą langą pataikėme {n} %',
+  cal_none: 'Kai bus bent 5 pilni ciklai, čia matysi, kiek tiksliai spėjame būtent tau.',
+  cal_good: 'Tai geriau nei vidutiniškai.',
+  // amžius
+  set_about_you: 'Apie tave',
+  set_birth_year: 'Gimimo metai',
+  birth_year_why: 'Amžius keičia ciklo prognozę: po 25 m. ciklas trumpėja ~0,18 d. per metus, o po 45 m. tampa nenuspėjamas. Neprivaloma.',
+  onb_birth_year: 'Kuriais metais gimei?',
+  onb_skip: 'Praleisti',
+  set_stopped_hormones: 'Kada nutraukei hormoninę kontracepciją',
+  // atsakomybė (FDA Special Control formuluotės)
+  disc_title: 'Ką ši programėlė gali ir ko negali',
+  disc_not_contraception: 'Tai NE kontracepcijos priemonė. Jokia programėlė neapsaugo nuo nėštumo.',
+  disc_no_method: 'Jokia kontracepcijos priemonė nėra 100 % efektyvi.',
+  disc_no_sti: 'Programėlė neapsaugo nuo lytiškai plintančių infekcijų.',
+  disc_accuracy: 'Tikslumą mažina: netaisyklingi ciklai, hormoninė kontracepcija per pastaruosius 2 mėn., laikotarpis po gimdymo, žindymas, perimenopauzė, PCOS, skydliaukės sutrikimai, ligos, stresas, kelionės, intensyvus sportas, staigūs svorio pokyčiai.',
+  disc_not_diagnosis: 'Programėlė nediagnozuoja. Jei kas nors kelia nerimą — kreipkis į gydytoją.',
+  disc_calendar_odds: 'Vien kalendoriumi paremtas „saugių dienų" skaičiavimas per metus nepasiteisina maždaug ketvirtadaliui moterų. Todėl saugių dienų čia nerodome.',
   // režimų kortelės
   ttc_title: 'Vaisingumas',
   ttc_fertile_now: 'Šiandien vaisinga diena',
@@ -218,6 +264,48 @@ const EN = {
   preg_week: 'Week {n}', preg_day_of_week: 'day {n}', preg_due: 'Due date',
   preg_left: '{n} days to go', preg_trimester: 'Trimester {n}', preg_start: 'First day of last period',
   preg_size: 'Baby is about the size of', preg_end: 'End pregnancy mode',
+  likely_on: 'Most likely {date}',
+  window_80: '80 % chance — {range}',
+  period_maybe_range: 'Period somewhere in {range}',
+  ov_source_bbt: 'confirmed by temperature',
+  ov_source_lh: 'from LH test',
+  ov_source_mucus: 'from cervical mucus',
+  ov_source_calendar: 'estimated from your cycle',
+  ov_source_personal: 'from your own luteal phase',
+  ov_precision: 'Ovulation day is estimated to ±{n} days. Only an LH test or temperature pins it down.',
+  fertile_wide: 'Possible fertile days',
+  fertile_core: 'Highest chance',
+  unknown_title: 'No prediction for now',
+  unknown_intro: 'Better to say "I do not know" than to show a day you cannot trust.',
+  q_few_cycles: 'Too few cycles — at least three are needed.',
+  q_irregular: 'Your cycles vary by 6 days or more. A prediction is possible, but only as a wide range.',
+  q_out_of_range: 'Cycles repeatedly shorter than 21 or longer than 38 days.',
+  q_perimenopause: 'After 45 cycles naturally become unpredictable. That is normal, but prediction stops working.',
+  q_young: 'In the first years after menarche the cycle is still settling.',
+  q_postpartum: 'After birth the cycle returns unevenly.',
+  q_after_hormones: 'After stopping hormonal contraception the cycle settles over about 2–3 months.',
+  q_maybe_skipped: 'It looks like some periods were left unmarked.',
+  q_very_long: 'More than 90 days since your last period. Worth talking to a doctor.',
+  skipped_ask: 'This cycle is already on day {n} — longer than any before. Did a period go unmarked?',
+  skipped_yes: 'Mark a period', skipped_no: 'No, the cycle really is this long',
+  cal_title: 'How accurate we are',
+  cal_line: 'Last {n} predictions: off by {mae} days on average.',
+  cal_coverage: 'The stated range was right {n} % of the time',
+  cal_none: 'Once there are 5 complete cycles, this shows how accurate we are for you specifically.',
+  cal_good: 'That is better than average.',
+  set_about_you: 'About you',
+  set_birth_year: 'Year of birth',
+  birth_year_why: 'Age changes the prediction: after 25 the cycle shortens by ~0.18 days a year, and after 45 it becomes unpredictable. Optional.',
+  onb_birth_year: 'What year were you born?',
+  onb_skip: 'Skip',
+  set_stopped_hormones: 'When you stopped hormonal contraception',
+  disc_title: 'What this app can and cannot do',
+  disc_not_contraception: 'This is NOT contraception. No app protects against pregnancy.',
+  disc_no_method: 'No method of contraception is 100 % effective.',
+  disc_no_sti: 'This app does not protect against sexually transmitted infections.',
+  disc_accuracy: 'Accuracy is reduced by: irregular cycles, hormonal contraception in the last 2 months, the postpartum period, breastfeeding, perimenopause, PCOS, thyroid conditions, illness, stress, travel, intense exercise, sudden weight change.',
+  disc_not_diagnosis: 'This app does not diagnose. If something worries you, see a doctor.',
+  disc_calendar_odds: 'Calendar-only "safe days" fail for roughly a quarter of women within a year. That is why safe days are not shown here.',
   ttc_title: 'Fertility',
   ttc_fertile_now: 'Today is a fertile day',
   ttc_ovulation_today: 'Ovulation — today',
@@ -355,6 +443,21 @@ export function formatDate(isoStr, opts = {}) {
     return opts.year ? `${y} m. ${gen} ${d} d.` : `${gen} ${d} d.`;
   }
   return opts.year ? `${d} ${mn} ${y}` : `${d} ${mn}`;
+}
+
+/** Datų intervalas be kartojimosi: „rugsėjo 4–12 d.", „rugpjūčio 30 – rugsėjo 3 d." */
+export function formatRange(from, to) {
+  const [, m1, d1] = from.split('-');
+  const [, m2, d2] = to.split('-');
+  if (m1 === m2) {
+    const mn = t('months')[+m1 - 1];
+    if (current === 'lt') {
+      const gen = mn.replace(/is$|as$|ė$/, x => ({ is: 'io', as: 'o', 'ė': 'ės' }[x]));
+      return `${gen} ${+d1}–${+d2} d.`;
+    }
+    return `${+d1}–${+d2} ${mn}`;
+  }
+  return `${formatDate(from)} – ${formatDate(to)}`;
 }
 
 /** Trumpai: „08-22" */

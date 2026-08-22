@@ -4,6 +4,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as C from '../js/cycle.js';
+import * as P from '../js/predict.js';
 
 // --- pagalbinės ------------------------------------------------------------
 
@@ -66,16 +67,24 @@ test('taisyklingas 28 d. ciklas: prognozė tiksli, pasitikėjimas aukštas', () 
   const s = C.analyze({ days, today: C.addDays(lastStart, 10) });
   assert.equal(s.avgCycle, 28);
   assert.equal(s.nextPeriod, C.addDays(lastStart, 28));
-  assert.equal(s.confidence, 'high');
-  assert.ok(s.window <= 2, `langas turi būti siauras, gautas ${s.window}`);
+  assert.ok(['high', 'medium'].includes(s.confidence), `pasitikėjimas ${s.confidence}`);
+  assert.ok(s.window <= 4, `langas gautas ±${s.window}`);
+  const many = build('2025-06-01', Array(12).fill(28));
+  const s12 = C.analyze({ days: many.days, today: C.addDays(many.lastStart, 10) });
+  assert.ok(s12.window < s.window, 'daugiau ciklų — siauresnis langas');
   assert.equal(s.dayOfCycle, 11);
+  assert.equal(s.quality.level, 'ok', s.quality.reasons.join(','));
 });
 
 test('vienas nukrypęs ciklas po ligos nesugriauna prognozės', () => {
   const { days, lastStart } = build('2026-01-05', [28, 27, 29, 61, 28, 28]);
   const s = C.analyze({ days, today: C.addDays(lastStart, 5) });
   assert.ok(Math.abs(s.avgCycle - 28) <= 1,
-    `svertinė mediana turi likti ~28, gauta ${s.avgCycle}`);
+    `prognozė turi likti ~28, gauta ${s.avgCycle}`);
+  const clean = C.analyze({ days: build('2026-01-05', [28, 27, 29, 28, 28]).days,
+                            today: C.addDays(lastStart, 5) });
+  assert.ok(s.window > clean.window,
+    'anomalus ciklas privalo praplėsti langą, o ne dingti be pėdsako');
 });
 
 test('netaisyklingas ciklas: platus langas ir žemas pasitikėjimas, o ne netikras tikslumas', () => {
@@ -112,11 +121,14 @@ test('nutrūkęs žymėjimas: nerodoma „vėluoja 200 dienų"', () => {
   assert.equal(s.phase, C.PHASE.UNKNOWN);
 });
 
-test('realus vėlavimas skaičiuojamas ir po 7 d. siūlomas testas', () => {
+test('vėlavimas matuojamas nuo pradinės prognozės, o prognozė vis tiek slenka', () => {
   const { days, lastStart } = build('2026-03-01', [28, 28, 28]);
   const s = C.analyze({ days, today: C.addDays(lastStart, 36) });
-  assert.equal(s.late, 8);
+  assert.equal(s.late, 8, 'vėluoja 8 d. nuo to, ko buvo tikėtasi');
   assert.equal(C.suggestTest(s), true);
+  // sąlyginė prognozė nebegali rodyti praeities: mėnesinės dar neprasidėjo
+  assert.ok(C.daysBetween(s.today, s.nextPeriod) >= 0,
+    `atnaujinta prognozė turi būti ateityje, gauta ${s.nextPeriod}`);
 });
 
 // --- ovuliacija ------------------------------------------------------------
@@ -169,11 +181,16 @@ test('gleivių peak day randamas prieš sausėjimą', () => {
   assert.equal(C.mucusPeak(days, C.rangeDays('2026-08-01', '2026-08-20')), '2026-08-13');
 });
 
-test('vaisingas langas apima 5 d. prieš ovuliaciją ir 1 po', () => {
+test('vaisingas langas: siaurasis 6 d. (Wilcox), rodomas — platesnis dėl neapibrėžtumo', () => {
   const { days, lastStart } = build('2026-02-01', [28, 28, 28]);
   const s = C.analyze({ days, today: C.addDays(lastStart, 8) });
-  assert.equal(C.daysBetween(s.fertile.from, s.ovulation.date), 5);
-  assert.equal(C.daysBetween(s.ovulation.date, s.fertile.to), 1);
+  // Wilcox 1995: pastojimas įmanomas tik 6 d. lange, kuris baigiasi ovuliacijos dieną
+  assert.equal(C.daysBetween(s.fertile.core.from, s.ovulation.date), 5);
+  assert.equal(s.fertile.core.to, s.ovulation.date);
+  // bet kai ovuliacija tik spėjama, rodyti 6 d. langą reikštų apsimestinį tikslumą
+  const shown = C.daysBetween(s.fertile.from, s.fertile.to);
+  assert.ok(shown >= 9, `spėjamas langas ${shown} d. — turi būti platesnis už 6`);
+  assert.equal(s.ovulation.confirmed, false);
 });
 
 test('asmeninė liuteininė fazė mokoma iš patvirtintų ovuliacijų', () => {
@@ -196,22 +213,33 @@ test('asmeninė liuteininė fazė mokoma iš patvirtintų ovuliacijų', () => {
 test('fazė teisinga per visą ciklą', () => {
   const { days, lastStart } = build('2026-01-05', [28, 28, 28]);
   const at = n => C.analyze({ days, today: C.addDays(lastStart, n) }).phase;
-  // 28 d. ciklas, liuteininė 14 → ovuliacija 14-ą ciklo dieną (lastStart + 13)
+  // 28 d. ciklas: ovuliacija 16-ą ciklo dieną (Johnson 2018), t. y. lastStart + 15
   assert.equal(at(0), C.PHASE.MENSTRUAL);
   assert.equal(at(6), C.PHASE.FOLLICULAR);
-  assert.equal(at(8), C.PHASE.FERTILE, 'vaisingas langas prasideda 5 d. prieš ovuliaciją');
-  assert.equal(at(13), C.PHASE.OVULATION);
-  assert.equal(at(14), C.PHASE.FERTILE, 'kiaušinėlis gyvas dar parą');
-  assert.equal(at(20), C.PHASE.LUTEAL);
+  assert.equal(at(11), C.PHASE.FERTILE, 'vaisingas langas prasideda 5 d. prieš ovuliaciją');
+  assert.equal(at(15), C.PHASE.OVULATION);
+  assert.equal(at(21), C.PHASE.LUTEAL);
   assert.equal(at(25), C.PHASE.PMS);
 });
 
 // --- nėštumas --------------------------------------------------------------
 
-test('28 d. ciklas ovuliuoja 14-ą dieną, kaip vadovėlyje', () => {
+test('28 d. ciklas ovuliuoja 16-ą dieną, kaip rodo LH duomenys, o ne 14-ą', () => {
+  // Johnson, Marriott & Zinaman 2018 (949 moterys, kasdienis šlapimo LH):
+  // 28 d. ciklui ovuliacijos diena 15,76 ± 1,91. „Minus 14" būtų 14-a diena —
+  // ji tik ketvirta pagal tikimybę (14 %).
   const { days, lastStart } = build('2026-01-05', [28, 28, 28]);
   const s = C.analyze({ days, today: C.addDays(lastStart, 5) });
-  assert.equal(C.daysBetween(lastStart, s.ovulation.date) + 1, 14);
+  assert.equal(C.daysBetween(lastStart, s.ovulation.date) + 1, 16);
+});
+
+test('trumpam ciklui „minus 14" klystų keliomis dienomis', () => {
+  const { days, lastStart } = build('2026-01-05', [24, 24, 24]);
+  const s = C.analyze({ days, today: C.addDays(lastStart, 3) });
+  const ovDay = C.daysBetween(lastStart, s.ovulation.date) + 1;
+  // Johnson: 24 d. ciklui 13,16 d. „Minus 14" duotų 10-ą — per anksti 3 dienomis
+  assert.ok(ovDay >= 12 && ovDay <= 15, `24 d. ciklas → ovuliacija ${ovDay} d.`);
+  assert.ok(ovDay - (24 - 14) >= 2);
 });
 
 test('nėštumo savaitė ir terminas', () => {
@@ -226,21 +254,23 @@ test('nėštumo savaitė ir terminas', () => {
 
 test('kalendorius: faktas nustelbia prognozę toje pačioje dienoje', () => {
   const { days, lastStart } = build('2026-05-01', [28, 28]);
-  const s = C.analyze({ days, today: C.addDays(lastStart, 3) });
+  const s = C.analyze({ days, today: C.addDays(lastStart, 3), settings: { avgCycle: 28 } });
   const paint = C.paintRange(s, C.addDays(lastStart, -60), C.addDays(lastStart, 60));
   assert.equal(paint[lastStart].kind, 'period');
   assert.equal(paint[lastStart].predicted, false);
-  const next = C.addDays(lastStart, 28);
+  const next = C.addDays(lastStart, s.avgCycle);
   assert.equal(paint[next].kind, 'period');
   assert.equal(paint[next].predicted, true);
 });
 
 test('kalendorius pažymi prognozuojamą vaisingą langą ateities cikle', () => {
   const { days, lastStart } = build('2026-05-01', [28, 28]);
-  const s = C.analyze({ days, today: C.addDays(lastStart, 3) });
+  const s = C.analyze({ days, today: C.addDays(lastStart, 3), settings: { avgCycle: 28 } });
   const paint = C.paintRange(s, lastStart, C.addDays(lastStart, 60));
-  const ovNext = C.ovulationDate(C.addDays(lastStart, 28), s.lutealDays);
+  const next = C.addDays(lastStart, s.avgCycle);
+  const ovNext = C.addDays(next, Math.round(P.ovulationDay(s.avgCycle).day) - 1);
   assert.equal(paint[ovNext].kind, 'ovulation');
+  assert.equal(paint[ovNext].predicted, true);
 });
 
 // --- įžvalgos --------------------------------------------------------------
@@ -277,4 +307,28 @@ test('statistika ignoruoja absurdiškus ciklus, bet istorijoje juos rodo', () =>
   assert.equal(s.cycles.length, 3);
   assert.equal(s.validCycles.length, 2, '9 d. ciklas turi būti atmestas');
   assert.ok(C.cycleHistory(s).some(c => !c.valid));
+});
+
+// --- kalibravimas: ar app'as sąžiningai matuoja savo paklaidą ---------------
+
+test('kalibravimas: reguliariai moteriai maža paklaida, netaisyklingai — didelė', () => {
+  const reg = build('2024-01-01', [28, 27, 29, 28, 28, 27, 29, 28, 28]);
+  const irr = build('2024-01-01', [24, 45, 31, 38, 26, 41, 29, 35, 30]);
+  const a = C.calibration(C.analyze({ days: reg.days, today: C.addDays(reg.lastStart, 3) }));
+  const b = C.calibration(C.analyze({ days: irr.days, today: C.addDays(irr.lastStart, 3) }));
+  assert.ok(a && b);
+  assert.ok(a.mae < 2, `reguliarios MAE ${a.mae} d — turi būti maža`);
+  assert.ok(b.mae > a.mae * 2, `netaisyklingos MAE ${b.mae} vs ${a.mae}`);
+});
+
+test('kalibravimas negrąžina skaičiaus, kai istorijos per mažai', () => {
+  const { days, lastStart } = build('2026-04-01', [28, 28]);
+  assert.equal(C.calibration(C.analyze({ days, today: C.addDays(lastStart, 3) })), null);
+});
+
+test('kalibravimo dengimas realioje istorijoje artimas 80 %', () => {
+  const { days, lastStart } = build('2023-01-01', [28, 30, 27, 29, 28, 31, 26, 29, 28, 30, 27, 28, 29]);
+  const cal = C.calibration(C.analyze({ days, today: C.addDays(lastStart, 3) }));
+  assert.ok(cal.n >= 8, `per mažai palyginimų: ${cal.n}`);
+  assert.ok(cal.coverage >= 0.6, `dengimas ${cal.coverage} — langas per siauras`);
 });

@@ -54,6 +54,8 @@ export const DEFAULT_SETTINGS = {
   mode: 'track',              // track | ttc | pregnancy | contraception
   avgCycle: 28,
   avgPeriod: 5,
+  birthYear: null,
+  contraceptionStoppedAt: null,
   pregnancyStart: null,
   weekStart: 1,               // 1 = pirmadienis
   units: 'metric',

@@ -67,6 +67,20 @@ export function renderSettings(ctx) {
     </div>
 
     <div class="card">
+      <h2>${esc(t('set_about_you') || '')}</h2>
+      <div class="field"><label>${esc(t('set_birth_year'))}</label>
+        <input type="number" id="birth-year" inputmode="numeric" min="1960"
+               max="${new Date().getFullYear() - 9}" value="${esc(settings.birthYear || '')}"
+               placeholder="—">
+        <div class="hint">${esc(t('birth_year_why'))}</div>
+      </div>
+      <div class="field" style="margin-top:14px"><label>${esc(t('set_stopped_hormones'))}</label>
+        <input type="date" id="stopped-hormones" max="${esc(state.today)}"
+               value="${esc(settings.contraceptionStoppedAt || '')}">
+      </div>
+    </div>
+
+    <div class="card">
       <h2>${esc(t('set_cycle_defaults'))}</h2>
       <div class="field"><label>${esc(t('set_avg_cycle'))}</label>${stepper('avgCycle', settings.avgCycle, t('ins_days'), 15, 60)}</div>
       <div class="field" style="margin-top:16px"><label>${esc(t('set_avg_period'))}</label>${stepper('avgPeriod', settings.avgPeriod, t('ins_days'), 1, 12)}</div>
@@ -158,6 +172,14 @@ export function renderSettings(ctx) {
       }
     }
   });
+
+  const byInput = $('#birth-year', node);
+  if (byInput) byInput.addEventListener('change', () => {
+    const v = parseInt(byInput.value, 10);
+    ctx.onSettings({ birthYear: Number.isFinite(v) ? v : null });
+  });
+  const shInput = $('#stopped-hormones', node);
+  if (shInput) shInput.addEventListener('change', () => ctx.onSettings({ contraceptionStoppedAt: shInput.value || null }));
 
   const pregInput = $('#preg-start', node);
   if (pregInput) pregInput.addEventListener('change', () => ctx.onSettings({ pregnancyStart: pregInput.value }));

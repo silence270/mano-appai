@@ -75,7 +75,8 @@ function makeDays(kind) {
     for (let i = 0; i < 4; i++) days[C.addDays(today, -6 + i)] = { flow: i < 3 ? 3 : 2 };
     return days;
   }
-  const lens = kind === 'irregular' ? [24, 45, 31, 38, 26, 40] : [29, 27, 30, 28, 40];
+  const lens = kind === 'irregular' ? [24, 45, 31, 38, 26, 33, 41, 28, 36, 40]
+                                    : [29, 27, 30, 28, 31, 28, 27, 29, 30, 28, 40];
   let start = C.addDays(today, -lens.slice(0, -1).reduce((a, b) => a + b, 0) - 12);
   lens.forEach((len, ci) => {
     const last = ci === lens.length - 1;

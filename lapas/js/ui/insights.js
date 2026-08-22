@@ -63,6 +63,36 @@ function bbtChart(state) {
   ${ovulation ? `<div class="note" style="margin-top:4px">🌿 ${esc(t('ins_confirmed_ov'))}: ${esc(formatDate(ovulation))}</div>` : ''}`;
 }
 
+/** Tikroji šio app'o paklaida šiai moteriai — matuota iš jos pačios istorijos. */
+function calibrationBlock(state) {
+  const cal = C.calibration(state);
+  if (!cal) return `<div class="empty">${esc(t('cal_none'))}</div>`;
+  const good = cal.mae <= 2;
+  return `<div>
+    <div style="font-size:16px;font-weight:650;line-height:1.45">
+      ${esc(t('cal_line', { n: cal.n, mae: cal.mae.toString().replace('.', ',') }))}
+    </div>
+    <div class="note" style="margin-top:10px">
+      ${esc(t('cal_coverage', { n: Math.round(cal.coverage * 100) }))}${good ? ' · ' + esc(t('cal_good')) : ''}
+    </div>
+    <div class="bars" style="margin-top:12px">
+      ${cal.errors.slice(-8).map(e => {
+        const w = Math.min(50, Math.abs(e) * 6);
+        const neg = e < 0;
+        return `<div class="bar-row">
+          <span class="lbl">${e > 0 ? '+' : ''}${String(e).replace('.', ',')}</span>
+          <span class="track" style="position:relative">
+            <span style="position:absolute;left:50%;top:0;bottom:0;width:1px;background:var(--line)"></span>
+            <span class="fill" style="position:absolute;${neg ? 'right:50%' : 'left:50%'};
+              width:${w}%;height:100%;background:${Math.abs(e) <= 2 ? 'var(--sage-2)' : 'var(--accent-2)'};
+              border-radius:${neg ? '6px 0 0 6px' : '0 6px 6px 0'}"></span>
+          </span>
+        </div>`;
+      }).join('')}
+    </div>
+  </div>`;
+}
+
 function patterns(state) {
   const pat = C.symptomPatterns(state.days, state);
   const lang = getLang();
@@ -107,7 +137,17 @@ export function renderInsights(ctx) {
     <div class="card"><h2>${esc(t('ins_history'))}</h2>${cycleBars(state)}</div>
     <div class="card"><h2>${esc(t('ins_bbt'))}</h2>${bbtChart(state)}</div>
     <div class="card"><h2>${esc(t('ins_patterns'))}</h2>${patterns(state)}</div>
+    <div class="card"><h2>${esc(t('cal_title'))}</h2>${calibrationBlock(state)}</div>
 
-    <div class="foot-note">${esc(t('disclaimer'))}</div>
+    <div class="card flat">
+      <h2>${esc(t('disc_title'))}</h2>
+      <div class="list">
+        ${[['🚫', t('disc_not_contraception')], ['📉', t('disc_calendar_odds')],
+           ['🩺', t('disc_not_diagnosis')], ['🦠', t('disc_no_sti')],
+           ['⚖️', t('disc_accuracy')]].map(([e, txt]) => `
+          <div class="item"><span class="ico">${e}</span>
+            <span class="txt"><b style="font-weight:500;font-size:13.5px;line-height:1.5">${esc(txt)}</b></span></div>`).join('')}
+      </div>
+    </div>
   </div>`);
 }

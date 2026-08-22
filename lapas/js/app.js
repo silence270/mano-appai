@@ -196,8 +196,8 @@ async function boot() {
     const root = $('#app');
     root.innerHTML = '';
     root.append(renderOnboarding({
-      onDone: async ({ lang, cycleLen, lastPeriod }) => {
-        await DB.updateSettings({ lang, avgCycle: cycleLen, onboarded: true });
+      onDone: async ({ lang, cycleLen, lastPeriod, birthYear }) => {
+        await DB.updateSettings({ lang, avgCycle: cycleLen, birthYear, onboarded: true });
         if (lastPeriod) {
           const days = {};
           for (let i = 0; i < 4; i++) days[C.addDays(lastPeriod, i)] = { flow: i < 3 ? 3 : 2 };
