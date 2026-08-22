@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="lt">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<title>Lapas — ekranų stendas</title>
+<link rel="stylesheet" href="../styles.css">
+<style>
+  body { padding-bottom: 0 }
+  .bar { position: sticky; top: 0; z-index: 60; display: flex; gap: 6px; padding: 8px;
+         background: var(--card); border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+  .bar button { padding: 7px 12px; border-radius: 8px; background: var(--bg-soft);
+                font-size: 12.5px; font-weight: 700; color: var(--ink); }
+  .bar button.on { background: var(--accent); color: #fff }
+  #host { max-width: 620px; margin: 0 auto }
+  .tabbar { position: static !important }
+</style>
+</head>
+<body>
+<script>
+/* Kūrimo įrankis: gyvame adrese neveikia, kad niekas netyčia neperrašytų duomenų. */
+if (!['localhost', '127.0.0.1'].includes(location.hostname)) {
+  document.documentElement.innerHTML =
+    '<body style="font:16px -apple-system,sans-serif;padding:40px;text-align:center;background:#120e15;color:#a294a6">Kūrimo įrankis. Veikia tik localhost.</body>';
+  throw new Error('dev only');
+}
+</script>
+
+<div class="bar">
+  <button data-screen="today" class="on">Šiandien</button>
+  <button data-screen="calendar">Kalendorius</button>
+  <button data-screen="insights">Įžvalgos</button>
+  <button data-screen="settings">Nustatymai</button>
+  <button data-screen="log">Žymėjimas</button>
+  <button data-screen="qr">QR</button>
+  <span style="flex:1"></span>
+  <button data-set="rich" class="on">pilna</button>
+  <button data-set="irregular">netaisyklingas</button>
+  <button data-set="fresh">naujokė</button>
+  <button data-set="empty">tuščia</button>
+  <span style="flex:1"></span>
+  <button data-theme="light">šviesi</button>
+  <button data-theme="dark" class="on">tamsi</button>
+  <button data-lang="lt" class="on">LT</button>
+  <button data-lang="en">EN</button>
+</div>
+<div id="host"></div>
+
+<script type="module">
+import * as C from '../js/cycle.js';
+import { setLang } from '../js/i18n.js';
+import { renderToday } from '../js/ui/today.js';
+import { renderCalendar, resetCursor } from '../js/ui/calendar.js';
+import { renderInsights } from '../js/ui/insights.js';
+import { renderSettings } from '../js/ui/settings.js';
+import { openLog } from '../js/ui/log.js';
+import { sendSheet } from '../js/ui/qr.js';
+import * as T from '../js/transfer.js';
+
+const SYM = ['cramps', 'bloating', 'headache', 'fatigue', 'acne', 'breast'];
+
+function makeDays(kind) {
+  const today = C.todayISO();
+  const days = {};
+  if (kind === 'empty') return days;
+  if (kind === 'fresh') {
+    for (let i = 0; i < 4; i++) days[C.addDays(today, -6 + i)] = { flow: i < 3 ? 3 : 2 };
+    return days;
+  }
+  const lens = kind === 'irregular' ? [24, 45, 31, 38, 26, 40] : [29, 27, 30, 28, 40];
+  let start = C.addDays(today, -lens.slice(0, -1).reduce((a, b) => a + b, 0) - 12);
+  lens.forEach((len, ci) => {
+    const last = ci === lens.length - 1;
+    for (let i = 0; i < len; i++) {
+      const d = C.addDays(start, i);
+      if (C.daysBetween(d, today) < 0) break;
+      const e = {};
+      if (i < 5) { e.flow = i === 0 ? 3 : i < 3 ? 4 : 2; if (i < 2) e.symptoms = ['cramps', 'backache']; e.mood = ['sensitive']; }
+      if (i % 3 === 0 && i >= 5) e.symptoms = [SYM[i % SYM.length]];
+      if (!last && i > len - 6) { e.symptoms = [...(e.symptoms || []), 'bloating']; e.mood = ['irritable']; }
+      if (kind === 'rich' && i >= 6 && i <= 26) e.bbt = +(36.34 + (i > 14 ? 0.36 : 0) + (i % 3) * 0.03).toFixed(2);
+      if (kind === 'rich' && i === 13) e.mucus = 'eggwhite';
+      if (kind === 'rich' && i === 12) { e.tests = ['lh_pos']; e.lh = 'pos'; }
+      if (Object.keys(e).length) days[d] = e;
+    }
+    start = C.addDays(start, len);
+  });
+  return days;
+}
+
+let screen = 'today', set = 'rich', lang = 'lt';
+const settings = { lang: 'lt', theme: 'dark', mode: 'track', avgCycle: 28, avgPeriod: 5, weekStart: 1, onboarded: true };
+
+function draw() {
+  setLang(lang);
+  const days = makeDays(set);
+  const state = C.analyze({ days, settings, today: C.todayISO() });
+  const ctx = {
+    state, settings, days,
+    storage: { usage: 48000, persisted: false },
+    hasPin: false, autoLang: 'lt',
+    entry: days[state.today],
+    needsBackup: set === 'rich',
+    onLog: iso => openLog(iso, days[iso], async () => {}),
+    onQuickPeriod: () => {}, onSettings: async () => {}, onBackup: () => {},
+    readAll: async () => ({ days, settings }), applyImport: async () => 0,
+    rerender: draw,
+  };
+  const host = document.getElementById('host');
+  host.innerHTML = '';
+  if (screen === 'log') { openLog(state.today, days[state.today], async () => {}); return; }
+  if (screen === 'qr') { sendSheet(T.buildPayload(days, settings)); return; }
+  resetCursor();
+  host.append(
+    screen === 'calendar' ? renderCalendar(ctx) :
+    screen === 'insights' ? renderInsights(ctx) :
+    screen === 'settings' ? renderSettings(ctx) : renderToday(ctx));
+}
+
+document.querySelector('.bar').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  const grp = b.dataset.screen ? 'screen' : b.dataset.set ? 'set' : b.dataset.theme ? 'theme' : 'lang';
+  [...b.parentElement.querySelectorAll(`[data-${grp}]`)].forEach(x => x.classList.toggle('on', x === b));
+  if (grp === 'screen') screen = b.dataset.screen;
+  if (grp === 'set') set = b.dataset.set;
+  if (grp === 'lang') lang = b.dataset.lang;
+  if (grp === 'theme') { document.documentElement.setAttribute('data-theme', b.dataset.theme); settings.theme = b.dataset.theme; }
+  draw();
+});
+
+document.documentElement.setAttribute('data-theme', 'dark');
+draw();
+</script>
+</body>
+</html>

@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="lt">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Lapas — testiniai duomenys</title>
+<link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+<script>
+/* Kūrimo įrankis: gyvame adrese neveikia, kad niekas netyčia neperrašytų duomenų. */
+if (!['localhost', '127.0.0.1'].includes(location.hostname)) {
+  document.documentElement.innerHTML =
+    '<body style="font:16px -apple-system,sans-serif;padding:40px;text-align:center;background:#120e15;color:#a294a6">Kūrimo įrankis. Veikia tik localhost.</body>';
+  throw new Error('dev only');
+}
+</script>
+
+<div class="screen">
+  <div class="head"><h1>Testiniai duomenys</h1></div>
+  <div class="note warn">Tik kūrimui. Perrašo viską, kas yra šio app'o saugykloje.</div>
+  <div class="card" style="margin-top:16px">
+    <div class="picks">
+      <button class="pick" data-s="rich"><span class="mark"></span><span class="txt"><b>Pilna istorija</b><span>5 ciklai, simptomai, BBT kreivė, LH, gleivės</span></span></button>
+      <button class="pick" data-s="irregular"><span class="mark"></span><span class="txt"><b>Netaisyklingas ciklas</b><span>24–45 d. svyravimai — plati prognozė</span></span></button>
+      <button class="pick" data-s="fresh"><span class="mark"></span><span class="txt"><b>Naujokė</b><span>vienos mėnesinės, be istorijos</span></span></button>
+      <button class="pick" data-s="wipe"><span class="mark"></span><span class="txt"><b>Ištrinti viską</b><span>grįžta į pirmą paleidimą</span></span></button>
+    </div>
+    <div class="note" id="out">—</div>
+    <a class="btn block" href="../index.html" style="margin-top:14px">Atidaryti Lapą</a>
+  </div>
+</div>
+<script type="module">
+import * as DB from '../js/db.js';
+import * as C from '../js/cycle.js';
+
+const SYM = ['cramps', 'bloating', 'headache', 'fatigue', 'acne', 'breast'];
+
+function build(kind) {
+  const today = C.todayISO();
+  const days = {};
+  const lens = kind === 'irregular' ? [24, 45, 31, 38, 26] : [29, 27, 30, 28, 40];
+  if (kind === 'fresh') {
+    for (let i = 0; i < 4; i++) days[C.addDays(today, -6 + i)] = { flow: i < 3 ? 3 : 2 };
+    return days;
+  }
+  let start = C.addDays(today, -lens.slice(0, 4).reduce((a, b) => a + b, 0) - 12);
+  lens.forEach((len, ci) => {
+    const last = ci === lens.length - 1;
+    for (let i = 0; i < len; i++) {
+      const d = C.addDays(start, i);
+      if (C.daysBetween(d, today) < 0) break;
+      const e = {};
+      if (i < 5) { e.flow = i === 0 ? 3 : i < 3 ? 4 : 2; if (i < 2) e.symptoms = ['cramps', 'backache']; e.mood = ['sensitive']; }
+      if (i % 3 === 0 && i >= 5) e.symptoms = [SYM[i % SYM.length]];
+      if (!last && i > len - 6) { e.symptoms = [...(e.symptoms || []), 'bloating']; e.mood = ['irritable']; }
+      if (kind === 'rich' && i >= 6 && i <= 24) e.bbt = +(36.34 + (i > 14 ? 0.36 : 0) + (i % 3) * 0.03).toFixed(2);
+      if (kind === 'rich' && i === 13) e.mucus = 'eggwhite';
+      if (kind === 'rich' && i === 12) { e.tests = ['lh_pos']; e.lh = 'pos'; }
+      if (Object.keys(e).length) days[d] = e;
+    }
+    start = C.addDays(start, len);
+  });
+  return days;
+}
+
+document.body.addEventListener('click', async e => {
+  const b = e.target.closest('[data-s]');
+  if (!b) return;
+  const kind = b.dataset.s;
+  const out = document.getElementById('out');
+  if (kind === 'wipe') { await DB.wipe(); out.textContent = 'Ištrinta.'; return; }
+  const days = build(kind);
+  await DB.putDays(days);
+  await DB.putSettings({ lang: 'lt', theme: 'auto', mode: 'track', avgCycle: 28, avgPeriod: 5, weekStart: 1, onboarded: true });
+  const st = C.analyze({ days, settings: { avgCycle: 28 } });
+  out.textContent = `Įrašyta ${Object.keys(days).length} dienų · ${st.validCycles.length} pilnų ciklų · vidurkis ${st.avgCycle} d. · ${st.confidence}`;
+});
+</script>
+</body>
+</html>
