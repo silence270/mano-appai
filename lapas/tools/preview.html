@@ -35,6 +35,11 @@ if (!['localhost', '127.0.0.1'].includes(location.hostname)) {
   <button data-screen="log">Žymėjimas</button>
   <button data-screen="qr">QR</button>
   <span style="flex:1"></span>
+  <button data-mode="track" class="on">sekimas</button>
+  <button data-mode="ttc">pastoti</button>
+  <button data-mode="pregnancy">nėštumas</button>
+  <button data-mode="contraception">tabletės</button>
+  <span style="flex:1"></span>
   <button data-set="rich" class="on">pilna</button>
   <button data-set="irregular">netaisyklingas</button>
   <button data-set="fresh">naujokė</button>
@@ -103,7 +108,7 @@ function draw() {
     entry: days[state.today],
     needsBackup: set === 'rich',
     onLog: iso => openLog(iso, days[iso], async () => {}),
-    onQuickPeriod: () => {}, onSettings: async () => {}, onBackup: () => {},
+    onQuickPeriod: () => {}, onSettings: async () => {}, onBackup: () => {}, onPill: () => {},
     readAll: async () => ({ days, settings }), applyImport: async () => 0,
     rerender: draw,
   };
@@ -120,11 +125,12 @@ function draw() {
 
 document.querySelector('.bar').addEventListener('click', e => {
   const b = e.target.closest('button'); if (!b) return;
-  const grp = b.dataset.screen ? 'screen' : b.dataset.set ? 'set' : b.dataset.theme ? 'theme' : 'lang';
+  const grp = b.dataset.screen ? 'screen' : b.dataset.set ? 'set' : b.dataset.theme ? 'theme' : b.dataset.mode ? 'mode' : 'lang';
   [...b.parentElement.querySelectorAll(`[data-${grp}]`)].forEach(x => x.classList.toggle('on', x === b));
   if (grp === 'screen') screen = b.dataset.screen;
   if (grp === 'set') set = b.dataset.set;
   if (grp === 'lang') lang = b.dataset.lang;
+  if (grp === 'mode') { settings.mode = b.dataset.mode; if (b.dataset.mode === 'pregnancy') settings.pregnancyStart = C.addDays(C.todayISO(), -145); }
   if (grp === 'theme') { document.documentElement.setAttribute('data-theme', b.dataset.theme); settings.theme = b.dataset.theme; }
   draw();
 });

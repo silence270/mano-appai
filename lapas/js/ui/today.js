@@ -5,7 +5,7 @@
 import { el, esc, ICON } from './dom.js';
 import { t, formatDate, getLang, cycleCount } from '../i18n.js';
 import * as C from '../cycle.js';
-import { FLOW_LEVELS, labelOf } from '../catalog.js';
+import { FLOW_LEVELS, labelOf, fetusSize } from '../catalog.js';
 
 const R = 84, CIRC = 2 * Math.PI * R;
 
@@ -85,6 +85,7 @@ function prediction(state) {
 
 function pregnancyCard(p) {
   if (!p) return '';
+  const size = fetusSize(p.week);
   return `<div class="card">
     <div class="ring-wrap" style="padding-bottom:10px">
       <div class="ring-num" style="font-size:52px">${p.week}</div>
@@ -93,6 +94,78 @@ function pregnancyCard(p) {
     <div class="stats" style="margin-top:8px">
       <div class="stat flat"><div class="k">${esc(t('preg_due'))}</div><div class="v" style="font-size:19px">${esc(formatDate(p.due, { year: true }))}</div></div>
       <div class="stat flat"><div class="k">${esc(t('preg_trimester', { n: p.trimester }))}</div><div class="v">${p.daysLeft}<small>${esc(t('days_short'))}</small></div></div>
+    </div>
+    ${size ? `<div class="note" style="display:flex;align-items:center;gap:10px">
+      <span style="font-size:24px">${size.e}</span>
+      <span>${esc(t('preg_size'))} ${esc(getLang() === 'en' ? size.en : size.lt)}</span></div>` : ''}
+  </div>`;
+}
+
+/** „Bandau pastoti": kur šiandien ciklo atžvilgiu ir ką verta daryti. */
+function ttcCard(state) {
+  if (!state.ovulation || !state.fertile) return '';
+  const { today, ovulation, fertile } = state;
+  const toOv = C.daysBetween(today, ovulation.date);
+  const inWindow = C.daysBetween(fertile.from, today) >= 0 && C.daysBetween(today, fertile.to) >= 0;
+
+  const headline = toOv === 0 ? t('ttc_ovulation_today')
+    : inWindow ? t('ttc_fertile_now')
+    : toOv > 0 ? t('ttc_days_to_ov', { n: toOv })
+    : t('ttc_after_ov', { n: -toOv });
+
+  const source = ovulation.confirmed ? t('ttc_confirmed')
+    : ovulation.source === 'lh' ? t('ttc_by_lh')
+    : ovulation.source === 'mucus' ? t('ttc_by_mucus')
+    : t('ttc_predicted');
+
+  const tip = ovulation.confirmed ? ''
+    : toOv > 0 && toOv <= 5 ? t('ttc_tip_lh')
+    : toOv > 5 ? t('ttc_tip_wait')
+    : t('ttc_tip_bbt');
+
+  return `<div class="card">
+    <h2>${esc(t('ttc_title'))}</h2>
+    <div style="display:flex;align-items:baseline;gap:9px;flex-wrap:wrap">
+      <b style="font-size:19px;color:${inWindow || toOv === 0 ? 'var(--sage)' : 'var(--ink)'}">${esc(headline)}</b>
+      <span style="font-size:12.5px;color:var(--ink-3);font-weight:600">${esc(source)}</span>
+    </div>
+    <div class="stats" style="margin-top:14px">
+      <div class="stat flat"><div class="k">${esc(t('phase_ovulation'))}</div>
+        <div class="v" style="font-size:17px">${esc(formatDate(ovulation.date))}</div></div>
+      <div class="stat flat"><div class="k">${esc(t('legend_fertile'))}</div>
+        <div class="v" style="font-size:17px">${esc(fertile.from.slice(5))} – ${esc(fertile.to.slice(5))}</div></div>
+    </div>
+    ${tip ? `<div class="note">${esc(tip)}</div>` : ''}
+  </div>`;
+}
+
+/** Kontracepcijos režimas: tabletė šiandien ir kaip sekasi laikytis. */
+function pillCard(state, entry) {
+  const meds = entry?.meds || [];
+  const taken = meds.includes('pill_taken');
+
+  let streak = 0;
+  for (let i = taken ? 0 : 1; i < 90; i++) {
+    const d = C.addDays(state.today, -i);
+    if ((state.days[d]?.meds || []).includes('pill_taken')) streak++;
+    else break;
+  }
+  let missed = 0;
+  for (let i = 0; i < 30; i++) {
+    if ((state.days[C.addDays(state.today, -i)]?.meds || []).includes('pill_missed')) missed++;
+  }
+
+  return `<div class="card">
+    <h2>${esc(t('pill_title'))}</h2>
+    <div style="display:flex;align-items:center;gap:12px">
+      <span style="font-size:26px">${taken ? '✅' : '💊'}</span>
+      <div style="flex:1">
+        <b style="font-size:16px">${esc(taken ? t('pill_taken_today') : t('pill_not_yet'))}</b>
+        <div style="font-size:12.5px;color:var(--ink-3);margin-top:2px">
+          ${streak ? esc(t('pill_streak', { n: streak })) : ''}${missed ? ' · ' + esc(t('pill_missed_recent', { n: missed })) : ''}
+        </div>
+      </div>
+      ${taken ? '' : `<button class="btn sm" data-act="pill">${esc(t('pill_take'))}</button>`}
     </div>
   </div>`;
 }
@@ -153,6 +226,9 @@ export function renderToday(ctx) {
         ${prediction(state)}
       </div>`}
 
+    ${state.mode === 'ttc' ? ttcCard(state) : ''}
+    ${state.mode === 'contraception' ? pillCard(state, entry) : ''}
+
     ${state.late >= 7 && !isPregnancy ? `<div class="note warn">${esc(t('suggest_test'))}</div>` : ''}
     ${ctx.needsBackup ? `<div class="note warn note-row">
       <span>${esc(t('backup_nudge'))}</span>
@@ -173,5 +249,6 @@ export function renderToday(ctx) {
   node.querySelector('[data-act="log"]')?.addEventListener('click', () => ctx.onLog(state.today));
   node.querySelector('[data-act="quick"]')?.addEventListener('click', () => ctx.onQuickPeriod(inPeriod));
   node.querySelector('[data-act="backup"]')?.addEventListener('click', () => ctx.onBackup());
+  node.querySelector('[data-act="pill"]')?.addEventListener('click', () => ctx.onPill());
   return node;
 }

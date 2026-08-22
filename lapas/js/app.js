@@ -85,6 +85,15 @@ async function saveDay(iso, patch) {
   render();
 }
 
+/** Vienas paspaudimas kontracepcijos režime — tabletė šiandien. */
+async function markPill() {
+  const today = C.todayISO();
+  const meds = new Set(app.days[today]?.meds || []);
+  meds.add('pill_taken'); meds.delete('pill_missed');
+  await saveDay(today, { meds: [...meds] });
+  toast(t('pill_taken_today'));
+}
+
 async function quickPeriod(ending) {
   const today = C.todayISO();
   await saveDay(today, ending ? { flow: 0 } : { flow: 3 });
@@ -134,6 +143,7 @@ function render() {
     needsBackup: needsBackup(),
     onLog: log,
     onQuickPeriod: quickPeriod,
+    onPill: markPill,
     onSettings,
     onBackup: () => { app.tab = 'settings'; render(); },
     readAll,

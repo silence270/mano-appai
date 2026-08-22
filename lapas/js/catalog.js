@@ -122,3 +122,40 @@ export function labelOf(id, lang) {
   return x ? `${x.e} ${lang === 'en' ? x.en : x.lt}` : raw;
 }
 export function itemOf(id) { return INDEX.get(String(id).replace(/^mood:/, '')) || null; }
+
+/** Nėštumo savaitės palyginimai. Indeksas = savaitė (4–40). */
+export const FETUS_SIZE = {
+  4:  { e: '🌱', lt: 'aguonos sėkla',      en: 'a poppy seed' },
+  5:  { e: '🫐', lt: 'sezamo sėkla',       en: 'a sesame seed' },
+  6:  { e: '🫛', lt: 'lęšis',              en: 'a lentil' },
+  7:  { e: '🫐', lt: 'mėlynė',             en: 'a blueberry' },
+  8:  { e: '🍇', lt: 'aviečių uoga',       en: 'a raspberry' },
+  9:  { e: '🍒', lt: 'vyšnia',             en: 'a cherry' },
+  10: { e: '🍓', lt: 'braškė',             en: 'a strawberry' },
+  11: { e: '🥝', lt: 'figa',               en: 'a fig' },
+  12: { e: '🍋', lt: 'žaliosios citrinos', en: 'a lime' },
+  13: { e: '🫑', lt: 'žirnių ankštis',     en: 'a pea pod' },
+  14: { e: '🍋', lt: 'citrina',            en: 'a lemon' },
+  15: { e: '🍎', lt: 'obuolys',            en: 'an apple' },
+  16: { e: '🥑', lt: 'avokadas',           en: 'an avocado' },
+  17: { e: '🍐', lt: 'kriaušė',            en: 'a pear' },
+  18: { e: '🍠', lt: 'saldžioji bulvė',    en: 'a sweet potato' },
+  19: { e: '🥭', lt: 'mangas',             en: 'a mango' },
+  20: { e: '🍌', lt: 'bananas',            en: 'a banana' },
+  22: { e: '🥥', lt: 'kokosas',            en: 'a coconut' },
+  24: { e: '🌽', lt: 'kukurūzo burbuolė',  en: 'an ear of corn' },
+  26: { e: '🥬', lt: 'salotų galva',       en: 'a head of lettuce' },
+  28: { e: '🍆', lt: 'baklažanas',         en: 'an eggplant' },
+  30: { e: '🥒', lt: 'agurkas',            en: 'a cucumber' },
+  32: { e: '🥥', lt: 'kokosas',            en: 'a coconut' },
+  34: { e: '🍈', lt: 'melionas',           en: 'a melon' },
+  36: { e: '🥬', lt: 'romaninės salotos',  en: 'romaine lettuce' },
+  38: { e: '🎃', lt: 'nedidelis moliūgas', en: 'a small pumpkin' },
+  40: { e: '🍉', lt: 'arbūzas',            en: 'a watermelon' },
+};
+
+/** Artimiausias turimas palyginimas savaitei. */
+export function fetusSize(week) {
+  for (let w = week; w >= 4; w--) if (FETUS_SIZE[w]) return FETUS_SIZE[w];
+  return null;
+}
