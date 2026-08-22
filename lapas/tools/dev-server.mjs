@@ -30,7 +30,9 @@ createServer(async (req, res) => {
     const body = await readFile(file);
     res.writeHead(200, {
       'Content-Type': MIME[extname(file)] || 'application/octet-stream',
-      'Cache-Control': 'no-store, must-revalidate',
+      // Chrome atsisako registruoti service worker'į, kurio skriptas atėjo su
+      // „no-store" — jam duodam „no-cache" (revaliduoti privaloma, laikyti galima).
+      'Cache-Control': file.endsWith('sw.js') ? 'no-cache' : 'no-store, must-revalidate',
       'Service-Worker-Allowed': '/',
     });
     res.end(body);
