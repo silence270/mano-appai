@@ -754,6 +754,25 @@ export function bbtChart(days, cycleStart, until) {
 export function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
 
 /**
+ * Dažniausiai žymimi dalykai — kad kasdienis žymėjimas neprasidėtų nuo šešiasdešimties
+ * variantų slinkimo. Imami paskutiniai 120 dienų: tai, ką moteris žymėjo pernai,
+ * šiandien nebūtinai aktualu.
+ *
+ * @returns {{symptoms:string[], mood:string[]}}
+ */
+export function mostUsed(days, today = todayISO(), limit = 6, windowDays = 120) {
+  const sym = {}, mood = {};
+  for (let i = 0; i < windowDays; i++) {
+    const e = days[addDays(today, -i)];
+    if (!e) continue;
+    for (const x of e.symptoms || []) sym[x] = (sym[x] || 0) + 1;
+    for (const x of e.mood || []) mood[x] = (mood[x] || 0) + 1;
+  }
+  const top = o => Object.entries(o).sort((a, b) => b[1] - a[1]).slice(0, limit).map(([k]) => k);
+  return { symptoms: top(sym), mood: top(mood) };
+}
+
+/**
  * Perimenopauzės stadija pagal STRAW+10 (Harlow et al.) — tarptautinį standartą.
  * Ne diagnozė: tai tik tai, ką matyti pačios moters pažymėtuose cikluose.
  *

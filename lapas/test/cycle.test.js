@@ -512,3 +512,20 @@ test('karščio bangos skaičiuojamos per paskutinius 3 mėnesius', () => {
   const m = C.menopauseStatus(days, st);
   assert.ok(m.hotFlashes >= 12 && m.hotFlashes <= 18, `gauta ${m.hotFlashes}`);
 });
+
+test('dažniausiai žymimi dalykai imami iš pastarųjų mėnesių, ne iš viso gyvenimo', () => {
+  const days = {};
+  // seniai: galvos skausmas kas dieną; neseniai: mėšlungis
+  for (let i = 200; i < 300; i++) days[C.addDays('2026-08-23', -i)] = { symptoms: ['headache'] };
+  for (let i = 0; i < 20; i++) days[C.addDays('2026-08-23', -i)] = { symptoms: ['cramps'], mood: ['irritable'] };
+  const top = C.mostUsed(days, '2026-08-23');
+  assert.equal(top.symptoms[0], 'cramps', 'pirmas turi būti dabartinis');
+  assert.ok(!top.symptoms.includes('headache'), 'senesnis nei 120 d. neįtraukiamas');
+  assert.deepEqual(top.mood, ['irritable']);
+});
+
+test('be istorijos greitoji eilutė tuščia, o ne atsitiktinė', () => {
+  const top = C.mostUsed({}, '2026-08-23');
+  assert.deepEqual(top.symptoms, []);
+  assert.deepEqual(top.mood, []);
+});

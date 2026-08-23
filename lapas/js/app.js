@@ -143,7 +143,7 @@ async function applyImport(payload, mode) {
 }
 
 function log(iso) {
-  openLog(iso, app.days[iso], saveDay);
+  openLog(iso, app.days[iso], saveDay, { frequent: C.mostUsed(app.days, C.todayISO()) });
 }
 
 // ------------------------------------------------------------------- ekranas
@@ -242,8 +242,41 @@ async function boot() {
   });
 }
 
+/**
+ * Atnaujinimas. Be šito naujas kodas laukia iki kito app'o uždarymo, o vartotoja
+ * nesupranta, kodėl pataisymo dar nematyti. Perkraunama tik jai paspaudus —
+ * niekada vidury žymėjimo.
+ */
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register(new URL('../sw.js', import.meta.url), { scope: './' }).catch(() => {});
+  navigator.serviceWorker.register(new URL('../sw.js', import.meta.url), { scope: './' })
+    .then(reg => {
+      const offer = worker => {
+        if (!worker || !navigator.serviceWorker.controller) return;
+        toast(`${t('update_ready')} · ${t('update_now')}`);
+        const bar = document.querySelector('.toast');
+        if (bar) {
+          bar.style.cursor = 'pointer';
+          bar.setAttribute('role', 'button');
+          bar.tabIndex = 0;
+          const go = () => { worker.postMessage({ type: 'SKIP_WAITING' }); };
+          bar.onclick = go;
+          bar.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') go(); };
+        }
+      };
+      if (reg.waiting) offer(reg.waiting);
+      reg.addEventListener('updatefound', () => {
+        const w = reg.installing;
+        w?.addEventListener('statechange', () => { if (w.state === 'installed') offer(w); });
+      });
+    })
+    .catch(() => {});
+
+  let reloading = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (reloading) return;
+    reloading = true;
+    location.reload();
+  });
 }
 
 boot().catch(err => {

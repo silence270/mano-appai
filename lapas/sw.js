@@ -16,10 +16,13 @@ const ASSETS = [
 ];
 
 self.addEventListener('install', e => {
-  e.waitUntil(caches.open(V)
-    .then(c => c.addAll(ASSETS))
-    .catch(() => {})
-    .then(() => self.skipWaiting()));
+  // Nebeperimam valdymo iškart: nauja versija laukia, kol vartotoja pati sutiks.
+  // Kitaip kodas pasikeistų vidury žymėjimo.
+  e.waitUntil(caches.open(V).then(c => c.addAll(ASSETS)).catch(() => {}));
+});
+
+self.addEventListener('message', e => {
+  if (e.data?.type === 'SKIP_WAITING') self.skipWaiting();
 });
 
 self.addEventListener('activate', e => {

@@ -6,7 +6,7 @@
 
 import { el, esc, sheet, tap, $, $$ } from './dom.js';
 import { t, formatDate, getLang, name } from '../i18n.js';
-import { FLOW_LEVELS, MOODS, SYMPTOM_GROUPS, MUCUS, SEX, TESTS, MEDS } from '../catalog.js';
+import { FLOW_LEVELS, MOODS, SYMPTOM_GROUPS, MUCUS, SEX, TESTS, MEDS, itemOf } from '../catalog.js';
 
 /** Iš pažymėtų testų išvedami laukai, kuriuos naudoja ciklo variklis. */
 export function normalize(entry) {
@@ -36,6 +36,21 @@ function group(title, inner) {
  * @param {Object} entry esamas įrašas
  * @param {(iso:string, patch:Object)=>Promise} save
  */
+/** Greitoji eilutė: tai, ką ji žymi dažniausiai — viršuje, be slinkimo. */
+function frequentRow(frequent, draft) {
+  const items = [
+    ...frequent.symptoms.map(id => ({ id, field: 'symptoms', item: itemOf(id) })),
+    ...frequent.mood.map(id => ({ id, field: 'mood', item: itemOf(id) })),
+  ].filter(x => x.item);
+  if (items.length < 3) return '';
+  const lang = getLang();
+  return group(t('log_frequent'), `<div class="chips" data-quick="1">
+    ${items.map(({ id, field, item }) => `
+      <button class="chip ${draft[field].includes(id) ? 'on' : ''}" data-id="${esc(id)}" data-field="${esc(field)}">
+        <span class="e">${item.e}</span>${esc(lang === 'en' ? item.en : item.lt)}
+      </button>`).join('')}</div>`);
+}
+
 export function openLog(iso, entry, save, opts = {}) {
   const draft = {
     flow: entry?.flow ?? 0,
@@ -60,6 +75,7 @@ export function openLog(iso, entry, save, opts = {}) {
 
   const lang = getLang();
   s.body.innerHTML = `
+    ${opts.frequent ? frequentRow(opts.frequent, draft) : ''}
     ${group(t('log_flow'), `<div class="flow-row">${FLOW_LEVELS.map(f => `
       <button class="flow-btn ${draft.flow === f.v ? 'on' : ''}" data-flow="${f.v}">
         <span class="drops">${f.v === 0 ? '<i></i>' : Array.from({ length: 4 }, (_, i) =>
@@ -141,13 +157,15 @@ export function openLog(iso, entry, save, opts = {}) {
       return;
     }
 
-    const field = box.dataset.multi;
+    // greitosios eilutės chip'as pats nurodo, kuriam laukui priklauso
+    const field = box.dataset.quick ? chip.dataset.field : box.dataset.multi;
     if (!field || !Array.isArray(draft[field])) return;
     const arr = draft[field];
     const id = chip.dataset.id;
     const at = arr.indexOf(id);
     if (at >= 0) arr.splice(at, 1); else arr.push(id);
-    chip.classList.toggle('on', at < 0);
+    // tas pats simptomas gali būti ir greitojoje eilutėje, ir savo grupėje
+    for (const el of $$(`[data-id="${CSS.escape(id)}"]`, s.body)) el.classList.toggle('on', at < 0);
   });
 
   // --- skaitiniai laukai

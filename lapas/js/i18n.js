@@ -52,6 +52,7 @@ const LT = {
   weekdays: ['S','P','A','T','K','P','Š'],   // 0 = sekmadienis (Date.getUTCDay tvarka)
   today: 'Šiandien', future_note: 'Ateities dienos nežymimos.',
   // žymėjimas
+  log_frequent: 'Dažniausiai žymi',
   log_flow: 'Srautas', log_mood: 'Nuotaika', log_symptoms: 'Simptomai',
   log_mucus: 'Išskyros', log_sex: 'Lytinis gyvenimas', log_tests: 'Testai',
   log_meds: 'Vaistai', log_bbt: 'Bazinė temperatūra', log_weight: 'Svoris', log_notes: 'Užrašai',
@@ -160,6 +161,8 @@ const LT = {
   onb_skip: 'Praleisti',
   set_stopped_hormones: 'Kada nutraukei hormoninę kontracepciją',
   // atsakomybė (FDA Special Control formuluotės)
+  update_ready: 'Yra naujesnė versija',
+  update_now: 'Atnaujinti',
   err_storage: 'Šioje naršyklėje negalima saugoti duomenų. Dažniausiai taip būna privačiame naršymo režime — atidaryk įprastame lange.',
   err_generic: 'Kažkas nepavyko paleisti. Pabandyk uždaryti ir atidaryti iš naujo.',
   disc_title: 'Ką ši programėlė gali ir ko negali',
@@ -286,6 +289,7 @@ const EN = {
   months_gen: ['January','February','March','April','May','June','July','August','September','October','November','December'],
   weekdays: ['S','M','T','W','T','F','S'],   // 0 = Sunday
   today: 'Today', future_note: 'Future days cannot be logged.',
+  log_frequent: 'You log most often',
   log_flow: 'Flow', log_mood: 'Mood', log_symptoms: 'Symptoms',
   log_mucus: 'Discharge', log_sex: 'Sex life', log_tests: 'Tests',
   log_meds: 'Medication', log_bbt: 'Basal temperature', log_weight: 'Weight', log_notes: 'Notes',
@@ -388,6 +392,8 @@ const EN = {
   onb_birth_year: 'What year were you born?',
   onb_skip: 'Skip',
   set_stopped_hormones: 'When you stopped hormonal contraception',
+  update_ready: 'A newer version is available',
+  update_now: 'Update',
   err_storage: 'This browser cannot store data. This usually happens in private browsing — open the app in a normal window.',
   err_generic: 'Something failed to start. Try closing and reopening the app.',
   disc_title: 'What this app can and cannot do',

@@ -111,14 +111,14 @@ function draw() {
     hasPin: false, autoLang: 'lt',
     entry: days[state.today],
     needsBackup: set === 'rich',
-    onLog: iso => openLog(iso, days[iso], async () => {}),
+    onLog: iso => openLog(iso, days[iso], async () => {}, { frequent: C.mostUsed(days, C.todayISO()) }),
     onQuickPeriod: () => {}, onSettings: async () => {}, onBackup: () => {}, onPill: () => {}, onPickDay: () => {},
     readAll: async () => ({ days, settings }), applyImport: async () => 0,
     rerender: draw,
   };
   const host = document.getElementById('host');
   host.innerHTML = '';
-  if (screen === 'log') { openLog(state.today, days[state.today], async () => {}); return; }
+  if (screen === 'log') { openLog(state.today, days[state.today], async () => {}, { frequent: C.mostUsed(days, C.todayISO()) }); return; }
   if (screen === 'qr') { sendSheet(T.buildPayload(days, settings)); return; }
   resetCursor();
   host.append(
