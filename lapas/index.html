@@ -5,6 +5,28 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
 <meta name="theme-color" content="#fbf6f6">
 <meta name="robots" content="noindex, nofollow">
+<!--
+  Griežta turinio politika. Svarbiausia eilutė — connect-src 'none':
+  app'as fiziškai negali nusiųsti duomenų niekur, net jei kas nors į jį
+  įterptų kodą. default-src 'none' reiškia, kad viskas, kas neišvardyta,
+  uždrausta pagal nutylėjimą.
+-->
+<meta http-equiv="Content-Security-Policy" content="
+  default-src 'none';
+  script-src 'self';
+  style-src 'self' 'unsafe-inline';
+  img-src 'self' data: blob:;
+  media-src 'self' blob:;
+  font-src 'self';
+  connect-src 'none';
+  worker-src 'self';
+  manifest-src 'self';
+  form-action 'none';
+  base-uri 'none';
+  frame-src 'none';
+  object-src 'none';
+">
+<meta name="color-scheme" content="light dark">
 <meta name="referrer" content="no-referrer">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">

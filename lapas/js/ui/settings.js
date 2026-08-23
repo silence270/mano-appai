@@ -5,8 +5,10 @@
 import { el, esc, $, $$, sheet, toast, confirmSheet, ICON, tap } from './dom.js';
 import { t, LANGS, formatDate } from '../i18n.js';
 import * as DB from '../db.js';
+import * as V from '../vault.js';
 import * as T from '../transfer.js';
 import { sendSheet, receiveSheet } from './qr.js';
+import { showRecoveryCode } from './lock.js';
 
 const MODES = ['track', 'ttc', 'pregnancy', 'contraception', 'perimenopause'];
 
@@ -93,9 +95,19 @@ export function renderSettings(ctx) {
     </div>
 
     <div class="card">
-      <h2>${esc(t('set_privacy'))}</h2>
+      <h2>${esc(t('sec_title'))}</h2>
       <div class="list">
-        ${item('🔒', t('set_pin'), ctx.hasPin ? '' : t('set_pin_note'), ctx.hasPin ? t('set_pin_on') : t('set_pin_off'), 'data-act="pin"')}
+        ${item('🔒', t('pin_change'), '', '', 'data-act="pin"')}
+        ${item('☺', t('bio_title'), '', ctx.bio.enabled ? t('bio_enabled')
+            : ctx.bio.available ? t('bio_disabled') : t('bio_unsupported'), 'data-act="bio"')}
+        ${item('🔑', t('rec_new'), t('rec_new_note'), '', 'data-act="rec"')}
+        ${ctx.isDecoy ? '' : item('🫥', t('panic_title'), '', '', 'data-act="panic"')}
+        ${item('🚪', t('autolock_title'), t('autolock_note'), '', 'data-act="locknow"')}
+      </div>
+      <div class="note">
+        ✓ ${esc(t('sec_encrypted'))}<br>
+        ✓ ${esc(t('sec_no_network'))}<br>
+        ✓ ${esc(t('sec_no_account'))}
       </div>
     </div>
 
@@ -112,6 +124,13 @@ export function renderSettings(ctx) {
     <div class="card">
       <h2>${esc(t('set_about'))}</h2>
       <div class="note">${esc(t('disclaimer'))}</div>
+      <div class="note" style="margin-top:8px">
+        <b style="display:block;margin-bottom:6px">${esc(t('sec_limits_title'))}</b>
+        · ${esc(t('sec_limit_device'))}<br>
+        · ${esc(t('sec_limit_shoulder'))}<br>
+        · ${esc(t('sec_limit_forced'))}<br>
+        · ${esc(t('sec_limit_backup'))}
+      </div>
       <div class="note" style="margin-top:10px">
         ${esc(t('set_storage', { n: storage.usage ? (storage.usage / 1024).toFixed(0) + ' KB' : '—' }))}<br>
         ${esc(storage.persisted ? t('set_persist_on') : t('set_persist_off'))}
@@ -159,6 +178,10 @@ export function renderSettings(ctx) {
     if (act === 'import') importSheet(ctx);
     if (act === 'qr') qrSheet(ctx);
     if (act === 'pin') pinSheet(ctx);
+    if (act === 'bio') bioSheet(ctx);
+    if (act === 'rec') recoverySheet(ctx);
+    if (act === 'panic') panicSheet(ctx);
+    if (act === 'locknow') ctx.onLockNow();
     if (act === 'persist') {
       const ok = await DB.requestPersistence();
       toast(ok ? t('set_persist_on') : t('set_persist_off'));
@@ -300,32 +323,93 @@ function qrSheet(ctx) {
 
 // ----------------------------------------------------------------------- PIN
 
+/** PIN keitimas: senasis, naujasis, pakartojimas. */
 function pinSheet(ctx) {
-  const s = sheet({ title: t('set_pin') });
-  if (ctx.hasPin) {
-    s.body.innerHTML = `
-      <div class="note">${esc(t('set_pin_note'))}</div>
-      <div style="margin:18px 0 8px"><button class="btn block danger" id="pin-off">${esc(t('set_pin_remove'))}</button></div>`;
-    $('#pin-off', s.body).onclick = async () => {
-      await DB.setPin(null);
-      toast(t('set_pin_off'));
-      s.close(); ctx.rerender();
-    };
-    return;
-  }
+  const s = sheet({ title: t('pin_change') });
   s.body.innerHTML = `
-    <div class="note">${esc(t('set_pin_note'))}</div>
-    <div class="field"><label>${esc(t('set_pin_new'))}</label>
-      <input type="password" id="pin-a" inputmode="numeric" maxlength="8" autocomplete="new-password"></div>
-    <div class="field"><label>${esc(t('set_pin_repeat'))}</label>
-      <input type="password" id="pin-b" inputmode="numeric" maxlength="8" autocomplete="new-password"></div>
-    <div style="margin:18px 0 8px"><button class="btn block" id="pin-on">${esc(t('save'))}</button></div>`;
-  $('#pin-on', s.body).onclick = async () => {
-    const a = $('#pin-a', s.body).value, b = $('#pin-b', s.body).value;
-    if (a.length < 4) { toast(t('set_pin_short')); return; }
-    if (a !== b) { toast(t('set_pin_mismatch')); return; }
-    await DB.setPin(a);
-    toast(t('set_pin_on'));
-    s.close(); ctx.rerender();
+    <div class="field"><label>${esc(t('pin_old'))}</label>
+      <input type="password" id="p-old" inputmode="numeric" autocomplete="current-password"></div>
+    <div class="field"><label>${esc(t('pin_new'))}</label>
+      <input type="password" id="p-new" inputmode="numeric" autocomplete="new-password"></div>
+    <div class="field"><label>${esc(t('lock_repeat'))}</label>
+      <input type="password" id="p-rep" inputmode="numeric" autocomplete="new-password"></div>
+    <div class="note">${esc(t('panic_how', { n: '…' }))}</div>
+    <div style="margin:18px 0 8px"><button class="btn block" id="p-go">${esc(t('save'))}</button></div>`;
+
+  $('#p-go', s.body).onclick = async () => {
+    const oldPin = $('#p-old', s.body).value;
+    const a = $('#p-new', s.body).value, b = $('#p-rep', s.body).value;
+    if (a.length < 4) { toast(t('lock_min')); return; }
+    if (a !== b) { toast(t('lock_mismatch')); return; }
+    const ok = await DB.changePin(oldPin, a);
+    toast(ok ? t('pin_changed') : t('lock_wrong'));
+    if (ok) { s.close(); ctx.rerender(); }
+  };
+}
+
+/** Face ID — įjungiama tik su PIN, kad negalėtų įjungti kas nors kitas. */
+function bioSheet(ctx) {
+  const s = sheet({ title: t('bio_title') });
+  const on = ctx.bio.enabled;
+  s.body.innerHTML = `
+    <div class="note">${esc(t('bio_note'))}</div>
+    ${!ctx.bio.available && !on ? `<div class="note warn">${esc(t('bio_unsupported'))}</div>` : `
+      ${on ? '' : `<div class="field" style="margin-top:14px"><label>${esc(t('bio_need_pin'))}</label>
+        <input type="password" id="b-pin" inputmode="numeric" autocomplete="current-password"></div>`}
+      <div style="margin:18px 0 8px">
+        <button class="btn block ${on ? 'danger' : ''}" id="b-go">${esc(on ? t('bio_off') : t('bio_on'))}</button>
+      </div>`}`;
+
+  const go = $('#b-go', s.body);
+  if (go) go.onclick = async () => {
+    if (on) { await DB.disableBiometrics(); toast(t('bio_disabled')); s.close(); ctx.rerender(); return; }
+    const r = await DB.enableBiometrics($('#b-pin', s.body).value);
+    if (r.ok) { toast(t('bio_enabled')); s.close(); ctx.rerender(); return; }
+    toast(r.reason === 'WRONG_PIN' ? t('lock_wrong')
+        : r.reason === 'NO_PRF' ? t('bio_no_prf')
+        : r.reason === 'CANCELLED' ? t('bio_cancelled') : t('bio_unsupported'));
+  };
+}
+
+/** Naujas atkūrimo kodas — reikia PIN, kad negalėtų pasidaryti kas nors kitas. */
+function recoverySheet(ctx) {
+  const s = sheet({ title: t('rec_new') });
+  s.body.innerHTML = `
+    <div class="note">${esc(t('rec_intro'))}</div>
+    <div class="note warn" style="margin-top:8px">${esc(t('rec_new_note'))}</div>
+    <div class="field" style="margin-top:14px"><label>${esc(t('bio_need_pin'))}</label>
+      <input type="password" id="r-pin" inputmode="numeric" autocomplete="current-password"></div>
+    <div style="margin:18px 0 8px"><button class="btn block" id="r-go">${esc(t('rec_new'))}</button></div>`;
+
+  $('#r-go', s.body).onclick = async () => {
+    const code = await DB.resetRecoveryCode($('#r-pin', s.body).value);
+    if (!code) { toast(t('rec_wrong_pin')); return; }
+    s.close(true);
+    showRecoveryCode(code);
+  };
+}
+
+/** Slaptas režimas: paaiškinimas ir galimybė pasirinkti nesusijusį kodą. */
+function panicSheet(ctx) {
+  const s = sheet({ title: t('panic_title') });
+  const rev = DB.reversePin(ctx.mainPinHint || '');
+  s.body.innerHTML = `
+    <div class="note">${esc(t('panic_how', { n: '••••' }))}</div>
+    <div class="note warn" style="margin-top:8px">${esc(t('panic_warn'))}</div>
+    <div class="field" style="margin-top:14px"><label>${esc(t('pin_old'))}</label>
+      <input type="password" id="k-cur" inputmode="numeric" autocomplete="current-password"></div>
+    <div class="field"><label>${esc(t('panic_custom'))}</label>
+      <input type="password" id="k-new" inputmode="numeric" autocomplete="new-password"></div>
+    <div style="margin:18px 0 8px"><button class="btn block" id="k-go">${esc(t('save'))}</button></div>`;
+
+  $('#k-go', s.body).onclick = async () => {
+    const cur = $('#k-cur', s.body).value, next = $('#k-new', s.body).value;
+    if (next.length < 4) { toast(t('lock_min')); return; }
+    if (next === cur) { toast(t('panic_same')); return; }
+    const check = await DB.unlock(cur);
+    if (!check.ok || check.decoy) { toast(t('lock_wrong')); return; }
+    await DB.setDecoyPin(next, { days: {}, settings: { lang: ctx.settings.lang } });
+    toast(t('panic_custom_set'));
+    s.close();
   };
 }

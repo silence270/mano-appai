@@ -16,7 +16,7 @@ import { renderCalendar, resetCursor } from './ui/calendar.js';
 import { renderInsights } from './ui/insights.js';
 import { renderSettings } from './ui/settings.js';
 import { openLog, normalize } from './ui/log.js';
-import { showLock } from './ui/lock.js';
+import { showLock, showSetup, showRecoveryCode } from './ui/lock.js';
 import { renderOnboarding } from './ui/onboarding.js';
 
 const TABS = [
@@ -32,7 +32,7 @@ const app = {
   settings: null,
   state: null,
   storage: { usage: null, persisted: false },
-  hasPin: false,
+  bio: { available: false, enabled: false },
 };
 
 // ------------------------------------------------------------------- tema
@@ -52,7 +52,10 @@ function applyTheme(theme) {
 async function reload() {
   app.days = await DB.getDays();
   app.settings = await DB.getSettings();
-  app.hasPin = await DB.hasPin();
+  app.bio = {
+    available: await DB.biometricsAvailable().catch(() => false),
+    enabled: await DB.biometricsEnabled().catch(() => false),
+  };
   app.state = C.analyze({ days: app.days, settings: app.settings, today: C.todayISO() });
   setLang(app.settings.lang || detectLang());
   applyTheme(app.settings.theme || 'auto');
@@ -154,7 +157,8 @@ function render() {
     state: app.state,
     settings: app.settings,
     storage: app.storage,
-    hasPin: app.hasPin,
+    bio: app.bio,
+    isDecoy: DB.isDecoy(),
     autoLang: detectLang(),
     entry: app.days[app.state.today],
     needsBackup: needsBackup(),
@@ -163,6 +167,8 @@ function render() {
     onPill: markPill,
     onPickDay: pickDay,
     onStillBleeding: stillBleeding,
+    onLockNow: lockNow,
+    isDecoy: DB.isDecoy(),
     askStillBleeding: C.shouldAskStillBleeding(app.days, app.state.today),
     onSettings,
     onBackup: () => { app.tab = 'settings'; render(); },
@@ -200,16 +206,75 @@ function tabbar() {
 
 // ------------------------------------------------------------------- startas
 
+/**
+ * Turinio slėpimas. iOS, perjungiant app'us, nufotografuoja ekraną ir rodo tą
+ * nuotrauką perjungiklyje. Uždengiame turinį PRIEŠ tai — kitaip ciklo duomenys
+ * matytųsi bet kam, kas atveria app'ų perjungiklį.
+ */
+function privacyShield(on) {
+  let sh = document.getElementById('shield');
+  if (on) {
+    if (!sh) {
+      sh = el('<div id="shield" class="shield" aria-hidden="true"><div class="leaf">🍃</div></div>');
+      document.body.append(sh);
+    }
+    sh.hidden = false;
+  } else if (sh) sh.hidden = true;
+}
+
+/** Perkelia duomenis iš senosios, neužšifruotos versijos ir ją pašalina. */
+async function migrateLegacy() {
+  const legacy = await import('./vault.js').then(V => V.findLegacy?.()).catch(() => null);
+  return legacy || null;
+}
+
 async function boot() {
   applyTheme('auto');
   matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
     if ((app.settings?.theme || 'auto') === 'auto') applyTheme('auto');
   });
 
-  if (await DB.isLocked()) {
-    await new Promise(res => showLock(res));
+  // Ekranas paslepiamas iškart, kai app'as praranda dėmesį, ir užrakinamas.
+  document.addEventListener('visibilitychange', async () => {
+    if (document.visibilityState === 'hidden') {
+      privacyShield(true);
+      if (!DB.isLocked()) { DB.lock(); app.days = {}; app.state = null; }
+      return;
+    }
+    privacyShield(false);
+    if (await DB.isInitialised() && DB.isLocked()) {
+      document.getElementById('app').innerHTML = '';
+      await new Promise(res => showLock(res));
+      await afterUnlock();
+    } else if (app.state && app.state.today !== C.todayISO()) {
+      await reload(); render();
+    }
+  });
+  window.addEventListener('pagehide', () => { privacyShield(true); DB.lock(); });
+
+  if (!(await DB.isInitialised())) {
+    const legacy = await migrateLegacy();
+    showSetup(async pin => {
+      const seed = legacy ? { days: legacy.days || {}, settings: legacy.settings || {} } : undefined;
+      const code = await DB.initialise(pin, seed);
+      // Senoji saugykla šalinama VISADA, ne tik po sėkmingo perkėlimo: joje
+      // duomenys gulėjo be šifravimo, todėl palikti ją telefone reikštų, kad
+      // visas naujas užraktas nieko neduoda.
+      const { dropLegacy } = await import('./vault.js');
+      await dropLegacy();
+      return code;
+    });
+    // atkūrimo kodo ekranas pats iškviečia onboarding'ą
+    document.addEventListener('lapas:setup-done', () => afterUnlock(), { once: true });
+    return;
   }
 
+  await new Promise(res => showLock(res));
+  await afterUnlock();
+}
+
+/** Bendras kelias po atrakinimo: krauna duomenis ir parodo tinkamą ekraną. */
+async function afterUnlock() {
   await reload();
   app.storage = await DB.storageInfo();
 
@@ -232,21 +297,9 @@ async function boot() {
     }));
     return;
   }
-
   render();
-
-  // grįžus po paros — perskaičiuojam „šiandien"
-  document.addEventListener('visibilitychange', async () => {
-    if (document.visibilityState !== 'visible') return;
-    if (app.state?.today !== C.todayISO()) { await reload(); render(); }
-  });
 }
 
-/**
- * Atnaujinimas. Be šito naujas kodas laukia iki kito app'o uždarymo, o vartotoja
- * nesupranta, kodėl pataisymo dar nematyti. Perkraunama tik jai paspaudus —
- * niekada vidury žymėjimo.
- */
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register(new URL('../sw.js', import.meta.url), { scope: './' })
     .then(reg => {
@@ -277,6 +330,15 @@ if ('serviceWorker' in navigator) {
     reloading = true;
     location.reload();
   });
+}
+
+/** Užrakinti rankiniu būdu — mygtukas nustatymuose. */
+async function lockNow() {
+  DB.lock();
+  app.days = {}; app.state = null;
+  document.getElementById('app').innerHTML = '';
+  await new Promise(res => showLock(res));
+  await afterUnlock();
 }
 
 boot().catch(err => {

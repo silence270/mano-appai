@@ -1,162 +1,143 @@
-/* Lapas — saugykla.
+/* Lapas — duomenų sluoksnis.
  *
- * IndexedDB, ne localStorage: Safari ITP gali išvalyti localStorage po 7 dienų
- * nenaudojimo, o čia guli metų duomenys. IndexedDB pridėtame į pagrindinį ekraną
- * app'e yra „ilgaamžė" saugykla.
- *
- * Nieko niekur nesiunčia. Vienintelis kelias duomenims išeiti — eksportas arba QR.
+ * Visa kriptografija gyvena vault.js. Čia — tik app'o sąvokos: dienos,
+ * nustatymai, vienos dienos įrašo sujungimas. Duomenys laikomi atmintyje,
+ * kol app'as atrakintas, ir įrašomi po kiekvieno pakeitimo.
  */
 
 'use strict';
 
-import { encryptJSON, decryptJSON, isEncrypted, randomBytes, b64, pinCheck } from './crypto.js';
+import * as V from './vault.js';
 import { sanitizeDays, sanitizeSettings } from './sanitize.js';
 
-const DB_NAME = 'lapas';
-const STORE = 'vault';
-const VERSION = 1;
-
-let _db = null;
-let _key = null;          // atrakinimo slaptažodis (PIN) atmintyje, kol app'as atidarytas
-
-function open() {
-  if (_db) return Promise.resolve(_db);
-  return new Promise((res, rej) => {
-    const r = indexedDB.open(DB_NAME, VERSION);
-    r.onupgradeneeded = () => {
-      const db = r.result;
-      if (!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE);
-    };
-    r.onsuccess = () => { _db = r.result; res(_db); };
-    r.onerror = () => rej(r.error);
-  });
-}
-
-function tx(mode, fn) {
-  return open().then(db => new Promise((res, rej) => {
-    const t = db.transaction(STORE, mode);
-    const s = t.objectStore(STORE);
-    const out = fn(s);
-    t.oncomplete = () => res(out?.result !== undefined ? out.result : out);
-    t.onerror = () => rej(t.error);
-    t.onabort = () => rej(t.error);
-  }));
-}
-
-const rawGet = k => tx('readonly', s => s.get(k));
-const rawPut = (k, v) => tx('readwrite', s => s.put(v, k));
-const rawDel = k => tx('readwrite', s => s.delete(k));
-
-// --- vieša API -------------------------------------------------------------
-
 export const DEFAULT_SETTINGS = {
-  lang: null,                 // null = pagal telefoną
-  theme: 'auto',              // auto | light | dark
-  mode: 'track',              // track | ttc | pregnancy | contraception | perimenopause
+  lang: null,
+  theme: 'auto',
+  mode: 'track',
   avgCycle: 28,
   avgPeriod: 5,
   birthYear: null,
   contraceptionStoppedAt: null,
   pregnancyStart: null,
-  weekStart: 1,               // 1 = pirmadienis
+  weekStart: 1,
   units: 'metric',
   showFertile: true,
   backupReminderAt: null,
+  recoveryShownAt: null,
   onboarded: false,
 };
 
-/** Ar saugykla užrakinta PIN'u ir dar neatrakinta šioje sesijoje. */
-export async function isLocked() {
-  const meta = await rawGet('meta');
-  return !!(meta?.pin) && _key === null;
+let _cache = null;      // { days, settings } atrakintame app'e
+
+async function load() {
+  if (_cache) return _cache;
+  const raw = await V.readAll();
+  _cache = {
+    days: sanitizeDays(raw.days).days,
+    settings: { ...DEFAULT_SETTINGS, ...sanitizeSettings(raw.settings) },
+  };
+  return _cache;
 }
 
-export async function hasPin() {
-  const meta = await rawGet('meta');
-  return !!meta?.pin;
+async function flush() {
+  if (!_cache) return;
+  await V.writeAll({ days: _cache.days, settings: _cache.settings });
 }
 
-export async function unlock(pin) {
-  const meta = await rawGet('meta');
-  if (!meta?.pin) return true;
-  const hash = await pinCheck(pin, meta.pin.salt);
-  if (hash !== meta.pin.hash) return false;
-  _key = pin;
-  return true;
+// ------------------------------------------------------------- užraktas
+
+export const isInitialised = () => V.isInitialised();
+export const isLocked = () => !V.isUnlocked();
+export const isDecoy = () => V.isDecoy();
+
+export async function unlock(secret, now = Date.now()) {
+  const r = await V.unlock(secret, now);
+  if (r.ok) _cache = null;
+  return r;
 }
 
-export function lock() { _key = null; }
-
-export async function setPin(pin) {
-  const days = await getDays(), settings = await getSettings();   // nuskaitom dar sena forma
-  if (pin) {
-    const salt = randomBytes(16);
-    _key = pin;
-    await rawPut('meta', { pin: { salt: b64(salt), hash: await pinCheck(pin, b64(salt)) } });
-  } else {
-    _key = null;
-    await rawDel('meta');
-  }
-  await putDays(days);                                            // perrašom nauja forma
-  await putSettings(settings);
+/** Atrakinimas veidu — per tą patį kelią, kad kešas būtų išvalytas. */
+export async function unlockBiometric(now = Date.now()) {
+  const r = await V.unlockBiometric(now);
+  if (r.ok) _cache = null;
+  return r;
 }
 
-async function readVal(key, fallback) {
-  const v = await rawGet(key);
-  if (v === undefined) return fallback;
-  if (isEncrypted(v)) {
-    if (_key === null) throw new Error('LOCKED');
-    return decryptJSON(v, _key);
-  }
-  return v;
+export const enableBiometrics = pin => V.enableBiometrics(pin);
+export const disableBiometrics = () => V.disableBiometrics();
+export const biometricsAvailable = () => V.biometricsAvailable();
+export const biometricsEnabled = () => V.biometricsEnabled();
+
+export function lock() {
+  V.lock();
+  _cache = null;          // atmintyje nelieka nieko, ką būtų galima perskaityti
 }
 
-async function writeVal(key, value) {
-  await rawPut(key, _key === null ? value : await encryptJSON(value, _key));
+export const guardState = now => V.guardState(now);
+
+/** Pirmas paleidimas. @returns {string} atkūrimo kodas */
+export async function initialise(pin, seed) {
+  const code = await V.initialise(pin, {
+    days: sanitizeDays(seed?.days || {}).days,
+    settings: { ...DEFAULT_SETTINGS, ...sanitizeSettings(seed?.settings || {}) },
+  });
+  _cache = null;
+  return code;
 }
 
-/**
- * Skaitant valoma taip pat, kaip importuojant: saugykloje gali gulėti duomenys,
- * įrašyti senesnės versijos arba anksčiau įkelti iš sugadinto failo. App'as
- * neturi lūžti dėl vieno lauko, kurio jis nebesupranta.
- */
-export const getDays = async () => sanitizeDays(await readVal('days', {})).days;
-export const putDays = d => writeVal('days', sanitizeDays(d).days);
-export const getSettings = async () =>
-  ({ ...DEFAULT_SETTINGS, ...sanitizeSettings(await readVal('settings', {})) });
-export const putSettings = s => writeVal('settings', { ...s, ...sanitizeSettings(s) });
+export const changePin = (oldSecret, newPin) => V.changePin(oldSecret, newPin);
+export const resetRecoveryCode = pin => V.resetRecoveryCode(pin);
+export const setDecoyPin = (pin, seed) => V.setDecoyPin(pin, seed);
+export const reversePin = pin => V.reversePin(pin);
+
+// -------------------------------------------------------------- duomenys
+
+export async function getDays() { return (await load()).days; }
+export async function getSettings() { return (await load()).settings; }
+
+export async function putDays(days) {
+  const c = await load();
+  c.days = sanitizeDays(days).days;
+  await flush();
+}
+
+export async function putSettings(s) {
+  const c = await load();
+  c.settings = { ...DEFAULT_SETTINGS, ...sanitizeSettings(s) };
+  await flush();
+}
+
+export async function updateSettings(patch) {
+  const c = await load();
+  c.settings = { ...c.settings, ...sanitizeSettings({ ...c.settings, ...patch }) };
+  await flush();
+  return c.settings;
+}
 
 /** Vienos dienos įrašas — sujungiamas, o ne perrašomas. Tušti laukai išvalomi. */
 export async function saveDay(iso, patch) {
-  const days = await getDays();
-  const merged = { ...(days[iso] || {}), ...patch };
+  const c = await load();
+  const merged = { ...(c.days[iso] || {}), ...patch };
   for (const [k, v] of Object.entries(merged)) {
     if (v === false) { delete merged[k]; continue; }
     if (v === null || v === undefined || v === '' ||
         (Array.isArray(v) && v.length === 0) ||
         (k === 'flow' && v === 0)) delete merged[k];
   }
-  if (Object.keys(merged).length === 0) delete days[iso];
-  else days[iso] = merged;
-  await putDays(days);
-  return days;
+  if (Object.keys(merged).length === 0) delete c.days[iso];
+  else c.days[iso] = merged;
+  c.days = sanitizeDays(c.days).days;
+  await flush();
+  return c.days;
 }
 
-export async function updateSettings(patch) {
-  const s = { ...(await getSettings()), ...patch };
-  await putSettings(s);
-  return s;
-}
-
-/** Viskas lauk — be atkūrimo. */
 export async function wipe() {
-  _key = null;
-  await tx('readwrite', s => s.clear());
-  _db?.close(); _db = null;
-  await new Promise(res => { const r = indexedDB.deleteDatabase(DB_NAME); r.onsuccess = r.onerror = r.onblocked = res; });
+  _cache = null;
+  await V.wipe();
 }
 
-/** Kiek vietos užima ir ar naršyklė pažadėjo duomenų netrinti. */
+// -------------------------------------------------------------- saugykla
+
 export async function storageInfo() {
   const out = { usage: null, persisted: false };
   try {
@@ -166,7 +147,6 @@ export async function storageInfo() {
   return out;
 }
 
-/** Paprašo naršyklės nelaikyti mūsų duomenų vienkartiniais. */
 export async function requestPersistence() {
   try { return navigator.storage?.persist ? await navigator.storage.persist() : false; }
   catch { return false; }
