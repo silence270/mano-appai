@@ -56,8 +56,10 @@ export function renderSettings(ctx) {
 
     <div class="card">
       <h2>${esc(t('set_language'))}</h2>
-      <div class="seg" data-seg="lang">
-        ${LANGS.map(l => `<button data-v="${l.id}" aria-pressed="${(settings.lang || ctx.autoLang) === l.id}">${esc(l.label)}</button>`).join('')}
+      <div class="field">
+        <select id="set-lang" aria-label="${esc(t('set_language'))}">
+          ${LANGS.map(l => `<option value="${l.id}" ${(settings.lang || ctx.autoLang) === l.id ? 'selected' : ''}>${esc(l.label)}</option>`).join('')}
+        </select>
       </div>
     </div>
 
@@ -199,6 +201,9 @@ export function renderSettings(ctx) {
       }
     }
   });
+
+  const langSel = $('#set-lang', node);
+  if (langSel) langSel.addEventListener('change', () => ctx.onSettings({ lang: langSel.value }));
 
   const byInput = $('#birth-year', node);
   if (byInput) byInput.addEventListener('change', () => {

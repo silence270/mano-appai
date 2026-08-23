@@ -50,6 +50,7 @@ if (!['localhost', '127.0.0.1'].includes(location.hostname)) {
   <button data-theme="dark" class="on">tamsi</button>
   <button data-lang="lt" class="on">LT</button>
   <button data-lang="en">EN</button>
+  <button data-lang="de">DE</button>
   <span style="flex:1"></span>
   <button id="sweep" style="background:var(--sage-bg);color:var(--sage)">patikra</button>
 </div>
@@ -57,7 +58,7 @@ if (!['localhost', '127.0.0.1'].includes(location.hostname)) {
 
 <script type="module">
 import * as C from '../js/cycle.js';
-import { setLang } from '../js/i18n.js';
+import { loadLang, setLang, LANGS } from '../js/i18n.js';
 import { renderToday } from '../js/ui/today.js';
 import { renderCalendar, resetCursor } from '../js/ui/calendar.js';
 import { renderInsights } from '../js/ui/insights.js';
@@ -133,7 +134,7 @@ document.querySelector('.bar').addEventListener('click', e => {
   [...b.parentElement.querySelectorAll(`[data-${grp}]`)].forEach(x => x.classList.toggle('on', x === b));
   if (grp === 'screen') screen = b.dataset.screen;
   if (grp === 'set') set = b.dataset.set;
-  if (grp === 'lang') lang = b.dataset.lang;
+  if (grp === 'lang') { lang = b.dataset.lang; loadLang(lang).then(draw); return; }
   if (grp === 'mode') { settings.mode = b.dataset.mode; if (b.dataset.mode === 'pregnancy') settings.pregnancyStart = C.addDays(C.todayISO(), -145); }
   if (grp === 'theme') { document.documentElement.setAttribute('data-theme', b.dataset.theme); settings.theme = b.dataset.theme; }
   draw();
@@ -186,7 +187,10 @@ function a11yProblems(tag) {
 
 /* Perbėga visas ekrano × duomenų × režimo × kalbos kombinacijas ir ieško
    neišverstų raktų, undefined/NaN, sugriuvusių ekranų ir prieinamumo klaidų. */
-document.getElementById('sweep').onclick = () => {
+document.getElementById('sweep').onclick = async () => {
+  // Visos tikrinamos kalbos įkeliamos iš anksto, kad piešimas liktų sinchroniškas.
+  for (const lg of ['lt', 'en', 'de']) await loadLang(lg);
+  await loadLang(lang);
   const problems = [];
   const keep = { screen, set, lang, mode: settings.mode };
   let n = 0;
@@ -197,6 +201,7 @@ document.getElementById('sweep').onclick = () => {
         for (const lg of ['lt', 'en']) {
           n++;
           set = s2; settings.mode = m; screen = sc; lang = lg;
+          setLang(lg);
           document.documentElement.setAttribute('data-theme', th);
           if (m === 'pregnancy') settings.pregnancyStart = C.addDays(C.todayISO(), -145);
           try {
@@ -217,6 +222,7 @@ document.getElementById('sweep').onclick = () => {
 };
 
 document.documentElement.setAttribute('data-theme', 'dark');
+await loadLang('lt');
 draw();
 </script>
 </body>

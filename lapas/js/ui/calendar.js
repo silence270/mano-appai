@@ -5,7 +5,7 @@
 'use strict';
 
 import { el, esc, $$, tap } from './dom.js';
-import { t, monthName } from '../i18n.js';
+import { t, monthName, weekdayLetters } from '../i18n.js';
 import * as C from '../cycle.js';
 
 let cursor = null;   // rodomas mėnuo, ISO pirmoji diena
@@ -30,7 +30,7 @@ function monthGrid(state, year, month, weekStart) {
   for (let i = 0; i < daysInMonth; i++) cells.push({ d: C.addDays(first, i), out: false });
   while (cells.length % 7) cells.push({ d: C.addDays(first, cells.length - firstDow), out: true });
 
-  const wd = t('weekdays');
+  const wd = weekdayLetters();
   const head = Array.from({ length: 7 }, (_, i) => wd[(i + weekStart) % 7]);
 
   return `
@@ -64,7 +64,7 @@ export function renderCalendar(ctx) {
     <div class="head"><h1>${esc(t('nav_calendar'))}</h1></div>
     <div class="card cal">
       <div class="cal-head">
-        <b>${esc(monthName(m - 1))} ${y}</b>
+        <b>${esc(monthName(m - 1, y))}</b>
         <div class="cal-nav">
           <button data-nav="-1" aria-label="prev">‹</button>
           <button data-nav="today">•</button>

@@ -88,7 +88,10 @@ export function sanitizeSettings(raw) {
   const s = {};
   if (!raw || typeof raw !== 'object') return s;
   const year = new Date().getUTCFullYear();
-  if (raw.lang === 'lt' || raw.lang === 'en') s.lang = raw.lang;
+  // 24 ES kalbos — sąrašas laikomas čia, kad valymas neatmestų teisėtos kalbos
+  const LANG_IDS = ['bg','cs','da','de','el','en','es','et','fi','fr','ga','hr',
+                    'hu','it','lt','lv','mt','nl','pl','pt','ro','sk','sl','sv'];
+  if (LANG_IDS.includes(raw.lang)) s.lang = raw.lang;
   if (['auto', 'light', 'dark'].includes(raw.theme)) s.theme = raw.theme;
   if (['track', 'ttc', 'pregnancy', 'contraception', 'perimenopause'].includes(raw.mode)) s.mode = raw.mode;
   const cyc = num(raw.avgCycle, 15, 90, 0);

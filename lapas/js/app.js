@@ -7,7 +7,7 @@
 'use strict';
 
 import { $, el, toast, ICON, tap } from './ui/dom.js';
-import { t, setLang, detectLang, getLang } from './i18n.js';
+import { t, loadLang, setLang, detectLang, getLang } from './i18n.js';
 import * as C from './cycle.js';
 import * as DB from './db.js';
 import * as T from './transfer.js';
@@ -59,7 +59,7 @@ async function reload() {
     enabled: await DB.biometricsEnabled().catch(() => false),
   };
   app.state = C.analyze({ days: app.days, settings: app.settings, today: C.todayISO() });
-  setLang(app.settings.lang || detectLang());
+  await loadLang(app.settings.lang || detectLang());
   applyTheme(app.settings.theme || 'auto');
   updateBadge();
 }
@@ -232,6 +232,9 @@ async function migrateLegacy() {
 }
 
 async function boot() {
+  // Kalba įkeliama pirmiausia: be jos net užrakto ekranas būtų angliškas
+  // žmogui, kuris angliškai nemoka.
+  await loadLang(detectLang());
   applyTheme('auto');
   matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
     if ((app.settings?.theme || 'auto') === 'auto') applyTheme('auto');
@@ -357,7 +360,7 @@ async function lockNow() {
 }
 
 boot().catch(err => {
-  setLang(detectLang());          // nustatymai neužsikrovė, tad kalba — iš telefono
+  loadLang(detectLang());         // nustatymai neužsikrovė, tad kalba — iš telefono
   // Dažniausia priežastis — privatus naršymo režimas, kur IndexedDB uždaryta.
   // Techninis pranešimas čia nieko nepasako, todėl sakoma, ką daryti.
   const storageBroken = /indexeddb|database|quota|LOCKED|storage/i.test(err?.message || '');

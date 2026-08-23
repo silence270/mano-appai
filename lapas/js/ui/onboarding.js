@@ -3,7 +3,7 @@
 'use strict';
 
 import { el, esc, $, $$, tap } from './dom.js';
-import { t, LANGS, setLang, detectLang } from '../i18n.js';
+import { t, LANGS, loadLang, detectLang } from '../i18n.js';
 import * as C from '../cycle.js';
 
 export function renderOnboarding(ctx) {
@@ -18,8 +18,10 @@ export function renderOnboarding(ctx) {
       <h1 style="font-size:27px;margin-top:10px" id="ob-hi">${esc(t('onb_welcome'))}</h1>
     </div>
 
-    <div class="seg" data-seg="lang" style="margin-bottom:18px">
-      ${LANGS.map(l => `<button data-v="${l.id}" aria-pressed="${l.id === lang}">${esc(l.label)}</button>`).join('')}
+    <div class="field" style="margin-bottom:18px">
+      <select id="ob-lang" aria-label="Language">
+        ${LANGS.map(l => `<option value="${l.id}" ${l.id === lang ? 'selected' : ''}>${esc(l.label)}</option>`).join('')}
+      </select>
     </div>
 
     <div class="card">
@@ -64,14 +66,12 @@ export function renderOnboarding(ctx) {
     $('#ob-days', node).textContent = t('ins_days');
   };
 
+  $('#ob-lang', node).addEventListener('change', e => {
+    lang = e.target.value;
+    loadLang(lang).then(retext);
+  });
+
   node.addEventListener('click', e => {
-    const l = e.target.closest('[data-seg="lang"] button');
-    if (l) {
-      lang = l.dataset.v; setLang(lang); tap();
-      $$('[data-seg="lang"] button', node).forEach(x => x.setAttribute('aria-pressed', String(x === l)));
-      retext();
-      return;
-    }
     const st = e.target.closest('#ob-cycle button');
     if (st) {
       cycleLen = Math.min(60, Math.max(15, cycleLen + (+st.dataset.d)));
