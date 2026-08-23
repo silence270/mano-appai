@@ -62,7 +62,7 @@ export function renderCalendar(ctx) {
 
   const node = el(`<div class="screen">
     <div class="head"><h1>${esc(t('nav_calendar'))}</h1></div>
-    <div class="card">
+    <div class="card cal">
       <div class="cal-head">
         <b>${esc(monthName(m - 1))} ${y}</b>
         <div class="cal-nav">

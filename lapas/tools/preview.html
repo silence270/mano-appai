@@ -139,8 +139,53 @@ document.querySelector('.bar').addEventListener('click', e => {
   draw();
 });
 
+/* WCAG kontrasto skaičiavimas — kad „gražu" ir „įskaitoma" nebūtų painiojama. */
+const relLum = c => {
+  const p = (c.match(/[\d.]+/g) || []).slice(0, 3).map(Number).map(v => {
+    v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+  });
+  return 0.2126 * p[0] + 0.7152 * p[1] + 0.0722 * p[2];
+};
+const contrast = (a, b) => {
+  const l1 = relLum(a), l2 = relLum(b);
+  return (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05);
+};
+const bgBehind = el => {
+  let n = el;
+  while (n && n !== document.body) {
+    const bg = getComputedStyle(n).backgroundColor;
+    if (bg && !/rgba\(0, 0, 0, 0\)|transparent/.test(bg)) return bg;
+    n = n.parentElement;
+  }
+  return getComputedStyle(document.body).backgroundColor;
+};
+
+/** Prieinamumo patikra vienam ekranui: kontrastas, mygtukų vardai, taikinių dydis. */
+function a11yProblems(tag) {
+  const out = [];
+  for (const el of document.querySelectorAll('#host *')) {
+    const cs = getComputedStyle(el);
+    if (cs.display === 'none' || cs.visibility === 'hidden') continue;
+    const own = [...el.childNodes].filter(n => n.nodeType === 3).map(n => n.textContent.trim()).join('');
+    if (own) {
+      const size = parseFloat(cs.fontSize), bold = +cs.fontWeight >= 700;
+      const need = (size >= 18.66 || (size >= 14 && bold)) ? 3 : 4.5;
+      const r = contrast(cs.color, bgBehind(el));
+      if (r < need) out.push(`${tag}: kontrastas ${r.toFixed(2)}/${need} — „${own.slice(0, 24)}"`);
+    }
+    if (el.tagName === 'BUTTON') {
+      if (!((el.innerText || '').trim() || el.getAttribute('aria-label')))
+        out.push(`${tag}: mygtukas be vardo (${el.className})`);
+      const b = el.getBoundingClientRect();
+      if (b.width && (b.height < 44 || b.width < 44))
+        out.push(`${tag}: taikinys ${Math.round(b.width)}×${Math.round(b.height)} (${el.className})`);
+    }
+  }
+  return out;
+}
+
 /* Perbėga visas ekrano × duomenų × režimo × kalbos kombinacijas ir ieško
-   neišverstų raktų, undefined/NaN ir sugriuvusių ekranų. */
+   neišverstų raktų, undefined/NaN, sugriuvusių ekranų ir prieinamumo klaidų. */
 document.getElementById('sweep').onclick = () => {
   const problems = [];
   const keep = { screen, set, lang, mode: settings.mode };
@@ -161,11 +206,7 @@ document.getElementById('sweep').onclick = () => {
             const tag = `${th}/${s2}/${m}/${sc}/${lg}`;
             if (raw) problems.push(`${tag}: neišversta ${[...new Set(raw)].join(',')}`);
             if (/undefined|NaN/.test(txt)) problems.push(`${tag}: undefined/NaN`);
-            // tekstas, susiliejęs su fonu, yra tokia pat klaida kaip ir sugriuvęs ekranas
-            for (const el of document.querySelectorAll('#host .note, #host .item b, #host .stat .v, #host .seg button')) {
-              const cs = getComputedStyle(el);
-              if (cs.color === cs.backgroundColor) problems.push(`${tag}: nematomas tekstas`);
-            }
+            problems.push(...a11yProblems(tag));
           } catch (e) { problems.push(`${th}/${s2}/${m}/${sc}/${lg}: ${e.message}`); }
         }
   screen = keep.screen; set = keep.set; lang = keep.lang; settings.mode = keep.mode;

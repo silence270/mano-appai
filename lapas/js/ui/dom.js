@@ -4,6 +4,8 @@
 
 'use strict';
 
+import { t } from '../i18n.js';
+
 export const $ = (sel, root = document) => root.querySelector(sel);
 export const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
 
@@ -43,7 +45,7 @@ export function sheet({ title, action, onAction, onClose, closeLabel = '✕' }) 
     <div class="sheet" role="dialog" aria-modal="true">
       <div class="sheet-grab"></div>
       <div class="sheet-head">
-        <button class="x" aria-label="close">${esc(closeLabel)}</button>
+        <button class="x" aria-label="${esc(t('close'))}: ${esc(title)}">${esc(closeLabel)}</button>
         <b>${esc(title)}</b>
         <button class="a">${action ? esc(action) : ''}</button>
       </div>
@@ -52,7 +54,12 @@ export function sheet({ title, action, onAction, onClose, closeLabel = '✕' }) 
   document.body.append(scrim, node);
   document.body.style.overflow = 'hidden';
   openSheets++;
-  requestAnimationFrame(() => { scrim.classList.add('in'); node.classList.add('in'); });
+  const returnFocus = document.activeElement;
+  requestAnimationFrame(() => {
+    scrim.classList.add('in'); node.classList.add('in');
+    // fokusas turi persikelti į lapą, kitaip ekrano skaitytuvas lieka fone
+    ($('.a', node)?.textContent ? $('.a', node) : $('.x', node))?.focus({ preventScroll: true });
+  });
 
   let closed = false;
   const close = (skipCb) => {
@@ -62,8 +69,23 @@ export function sheet({ title, action, onAction, onClose, closeLabel = '✕' }) 
       scrim.remove(); node.remove();
       if (--openSheets <= 0) { openSheets = 0; document.body.style.overflow = ''; }
     }, 300);
+    document.removeEventListener('keydown', onKey, true);
+    try { returnFocus?.focus?.({ preventScroll: true }); } catch {}
     if (!skipCb) onClose?.();
   };
+
+  // Esc uždaro; Tab neišeina iš lapo, kol jis atidarytas
+  const onKey = e => {
+    if (e.key === 'Escape') { e.stopPropagation(); close(); return; }
+    if (e.key !== 'Tab') return;
+    const items = [...node.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])')]
+      .filter(x => !x.disabled && x.offsetParent !== null);
+    if (!items.length) return;
+    const first = items[0], last = items[items.length - 1];
+    if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+  };
+  document.addEventListener('keydown', onKey, true);
   scrim.onclick = () => close();
   $('.x', node).onclick = () => close();
   if (action) $('.a', node).onclick = () => onAction?.(close);
@@ -97,7 +119,8 @@ export function sheet({ title, action, onAction, onClose, closeLabel = '✕' }) 
 let toastTimer = null;
 export function toast(msg) {
   let t = $('.toast');
-  if (!t) { t = el('<div class="toast"></div>'); document.body.append(t); }
+  // role="status" — pranešimas perskaitomas balsu, bet nenutraukia to, ką vartotoja daro
+  if (!t) { t = el('<div class="toast" role="status" aria-live="polite"></div>'); document.body.append(t); }
   t.textContent = msg;
   requestAnimationFrame(() => t.classList.add('in'));
   clearTimeout(toastTimer);

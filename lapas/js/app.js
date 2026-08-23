@@ -178,12 +178,13 @@ function render() {
     renderToday(ctx);
 
   root.innerHTML = '';
+  screen.setAttribute('role', 'main');
   root.append(screen, tabbar());
   root.scrollTop = 0;
 }
 
 function tabbar() {
-  const bar = el(`<nav class="tabbar">
+  const bar = el(`<nav class="tabbar" aria-label="${t('app')}">
     ${TABS.map(tb => `<button data-tab="${tb.id}" ${app.tab === tb.id ? 'aria-current="page"' : ''}>
       ${tb.icon}<span>${t(tb.label)}</span></button>`).join('')}
   </nav>`);
