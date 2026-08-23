@@ -39,6 +39,19 @@ yra log-normalus hierarchinis Bajeso modelis, kuris mokosi iš tavo pačios cikl
 
 Kiekvienos konstantos šaltinis — [MOKSLAS.md](MOKSLAS.md).
 
+## Kas dar yra
+
+- **Režimai**: sekimas · bandau pastoti · nėštumas · kontracepcija · perimenopauzė.
+  Perimenopauzės režimu prognozė nerodoma sąmoningai — ciklai tampa nenuspėjami
+  (STRAW+10 stadijos atpažįstamos iš pačios moters ciklų).
+- **„Kada tai pasitaiko"** — pasirinkus simptomą matyti, kuriomis ciklo dienomis jis
+  kartojasi. Juostos dalijamos iš to, kiek ciklų apskritai turėjo tokią dieną.
+- **Ciklo santrauka** — paspaudus juostą istorijoje: ilgis, mėnesinės, patvirtinta
+  ovuliacija, liuteininė fazė, dažniausi simptomai, temperatūros kreivė.
+- **Savikontrolė** — app'as matuoja savo paklaidą retrospektyviai ir rodo ją.
+- **Prieinamumas** — WCAG AA kontrastas ir 44 px taikiniai visuose 320 ekranų
+  (tikrinama automatiškai), Esc/Tab lapuose, fokusas grįžta į mygtuką.
+
 ## Perkėlimas į kitą telefoną
 
 Be interneto: senas telefonas rodo animuotą QR srautą, naujas nuskaito kamera.
@@ -77,7 +90,7 @@ node tools/dev-server.mjs 8132     # serveris be cache
 open http://localhost:8132/lapas/tools/preview.html   # visų ekranų stendas
 open http://localhost:8132/lapas/tools/seed.html      # testiniai duomenys
 open http://localhost:8132/lapas/tools/qr-test.html   # QR grandinė be kameros
-npm test                            # 80 testų
+npm test                            # 91 testas
 ```
 
 Ikonos pergeneruojamos: `node tools/make-icons.mjs`
