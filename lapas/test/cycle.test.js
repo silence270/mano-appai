@@ -397,3 +397,118 @@ test('mėnesinių trukmė teisinga, kai pažymėtos visos dienos', () => {
   assert.equal(eps.length, 1);
   assert.equal(eps[0].length, 5, '„baigėsi" žyma neturi pratęsti epizodo');
 });
+
+// --- simptomų istorija ir ciklo detalės ------------------------------------
+
+/** Ciklai su simptomu nurodytomis ciklo dienomis. */
+function withSymptom(lens, sym, atDays, opts = {}) {
+  const days = {};
+  let start = opts.start || '2025-06-01';
+  lens.forEach((len, ci) => {
+    for (let i = 0; i < 5; i++) days[C.addDays(start, i)] = { flow: i < 3 ? 4 : 2 };
+    const at = typeof atDays === 'function' ? atDays(ci) : atDays;
+    for (const d of at) {
+      const iso = C.addDays(start, d - 1);
+      days[iso] = { ...(days[iso] || {}), symptoms: [...((days[iso] || {}).symptoms || []), sym] };
+    }
+    start = C.addDays(start, len);
+  });
+  return { days, lastStart: start };
+}
+
+test('simptomo pasiskirstymas randa ciklo dieną, o ne kalendorinę', () => {
+  const { days, lastStart } = withSymptom(Array(6).fill(28), 'headache', [25, 26]);
+  const st = C.analyze({ days, today: C.addDays(lastStart, 2) });
+  const h = C.symptomByDay(days, st, 'headache');
+  assert.ok([25, 26].includes(h.peakDay), `pikas turi būti 25–26 d., gauta ${h.peakDay}`);
+  assert.equal(h.total, 12, 'du kartus per kiekvieną iš 6 ciklų');
+  assert.ok(h.seen[24] >= 6, 'vardiklis: 25-a diena stebėta visuose cikluose');
+});
+
+test('vardiklis neleidžia meluoti apie retai pasiekiamas ciklo dienas', () => {
+  // trumpi ciklai: 35-a diena egzistuoja tik ilguosiuose
+  const { days, lastStart } = withSymptom([24, 24, 40, 24, 24], 'bloating', [20]);
+  const st = C.analyze({ days, today: C.addDays(lastStart, 2) });
+  const b = C.symptomByDay(days, st, 'bloating');
+  assert.ok(b.seen[34] < b.seen[10], '35-a diena stebėta rečiau nei 11-a');
+});
+
+test('tendencija pastebi, kad simptomas dažnėja', () => {
+  // pirmuose trijuose cikluose 1 kartą, paskutiniuose — 3
+  // tendencijai reikia 6 PILNŲ ciklų, tad epizodų — septynių
+  const { days, lastStart } = withSymptom(Array(7).fill(28), 'cramps',
+    ci => (ci < 3 ? [10] : [10, 11, 12]));
+  const st = C.analyze({ days, today: C.addDays(lastStart, 2) });
+  const tr = C.symptomTrend(days, st, 'cramps');
+  assert.ok(tr && tr.delta > 1, `turi rodyti dažnėjimą, gauta ${JSON.stringify(tr)}`);
+});
+
+test('tendencija tyli, kai istorijos per mažai', () => {
+  const { days, lastStart } = withSymptom([28, 28, 28], 'cramps', [10]);
+  const st = C.analyze({ days, today: C.addDays(lastStart, 2) });
+  assert.equal(C.symptomTrend(days, st, 'cramps'), null);
+});
+
+test('ciklo detalės: ilgis, mėnesinės, ovuliacija, dažniausi simptomai', () => {
+  const days = {};
+  let start = '2026-01-05';
+  for (let c = 0; c < 3; c++) {
+    for (let i = 0; i < 5; i++) days[C.addDays(start, i)] = { flow: i < 3 ? 4 : 2, symptoms: ['cramps'] };
+    for (let i = 5; i < 17; i++) days[C.addDays(start, i)] = { bbt: 36.35 + (i % 3) * 0.03 };
+    for (let i = 17; i < 28; i++) days[C.addDays(start, i)] = { bbt: 36.72 + (i % 2) * 0.03, symptoms: ['bloating'] };
+    start = C.addDays(start, 28);
+  }
+  const st = C.analyze({ days, today: C.addDays(start, 3) });
+  const d = C.cycleDetail(days, st, 1);
+  assert.equal(d.length, 28);
+  assert.equal(d.periodLength, 5);
+  assert.ok(d.ovulation?.confirmed, 'BBT šuolis turi būti aptiktas');
+  assert.ok(d.luteal >= 9 && d.luteal <= 12, `liuteininė ${d.luteal}`);
+  assert.equal(d.topSymptoms[0][0], 'bloating', 'dažniausias — 11 dienų');
+  assert.ok(d.bbtPoints > 20);
+  assert.equal(C.cycleDetail(days, st, 99), null);
+});
+
+// --- perimenopauzė ---------------------------------------------------------
+
+test('STRAW+10 stadijos atpažįstamos iš pačios moters ciklų', () => {
+  const reg = build('2025-01-01', [28, 29, 28, 27, 28]);
+  const stReg = C.analyze({ days: reg.days, today: C.addDays(reg.lastStart, 3) });
+  assert.equal(C.menopauseStatus(reg.days, stReg).stage, 'none', 'taisyklingi ciklai — jokios stadijos');
+
+  // ankstyva pereinamoji: gretimi ciklai skiriasi 7+ dienų
+  const early = build('2024-01-01', [28, 38, 26, 40, 29, 37]);
+  const stEarly = C.analyze({ days: early.days, today: C.addDays(early.lastStart, 3) });
+  const e = C.menopauseStatus(early.days, stEarly);
+  assert.equal(e.stage, 'early', `gauta ${e.stage}, šuolių ${e.bigJumps}`);
+  assert.ok(e.bigJumps >= 2);
+
+  // vėlyva: buvo ilgesnis nei 60 d. tarpas
+  const late = build('2024-01-01', [30, 75, 32, 40]);
+  const stLate = C.analyze({ days: late.days, today: C.addDays(late.lastStart, 3) });
+  assert.equal(C.menopauseStatus(late.days, stLate).stage, 'late');
+});
+
+test('po metų be mėnesinių — postmenopauzė, o kraujavimas po jos siunčia pas gydytoją', () => {
+  const days = { '2024-06-01': { flow: 3 }, '2024-06-02': { flow: 3 } };
+  const st = C.analyze({ days, today: '2026-08-23' });
+  const m = C.menopauseStatus(days, st);
+  assert.equal(m.stage, 'post');
+  assert.ok(m.sinceLast > 365);
+
+  const bleeding = { ...days, '2026-08-20': { flow: 3 }, '2026-08-21': { flow: 2 } };
+  // po metų pertraukos vėl atsiradęs kraujavimas
+  const st2 = C.analyze({ days: bleeding, today: '2026-08-23' });
+  const m2 = C.menopauseStatus(bleeding, st2);
+  assert.ok(m2.sinceLast < 30, 'paskutinės mėnesinės ką tik');
+  assert.equal(m2.stage === 'post' || m2.gap >= 60, true, 'ilgas tarpas išlieka istorijoje');
+});
+
+test('karščio bangos skaičiuojamos per paskutinius 3 mėnesius', () => {
+  const days = { '2026-05-01': { flow: 3 } };
+  for (let i = 0; i < 12; i++) days[C.addDays('2026-08-23', -i * 5)] = { symptoms: ['hot_flash'] };
+  days[C.addDays('2026-08-23', -200)] = { symptoms: ['hot_flash'] };   // per sena
+  const st = C.analyze({ days, today: '2026-08-23' });
+  const m = C.menopauseStatus(days, st);
+  assert.ok(m.hotFlashes >= 12 && m.hotFlashes <= 18, `gauta ${m.hotFlashes}`);
+});

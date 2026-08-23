@@ -8,7 +8,7 @@ import * as DB from '../db.js';
 import * as T from '../transfer.js';
 import { sendSheet, receiveSheet } from './qr.js';
 
-const MODES = ['track', 'ttc', 'pregnancy', 'contraception'];
+const MODES = ['track', 'ttc', 'pregnancy', 'contraception', 'perimenopause'];
 
 function item(icon, title, sub, right = '', attrs = '') {
   return `<button class="item" ${attrs}>

@@ -51,7 +51,7 @@ const rawDel = k => tx('readwrite', s => s.delete(k));
 export const DEFAULT_SETTINGS = {
   lang: null,                 // null = pagal telefoną
   theme: 'auto',              // auto | light | dark
-  mode: 'track',              // track | ttc | pregnancy | contraception
+  mode: 'track',              // track | ttc | pregnancy | contraception | perimenopause
   avgCycle: 28,
   avgPeriod: 5,
   birthYear: null,

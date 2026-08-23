@@ -607,6 +607,93 @@ export function symptomPatterns(days, state) {
   return stats;
 }
 
+/**
+ * Kaip simptomas pasiskirsto per ciklą: kiek kartų jis buvo kiekvieną ciklo dieną
+ * ir kiek ciklų iš viso tą dieną stebėta. Be vardiklio skaičiai meluotų —
+ * 20-a diena būna ne kiekviename cikle.
+ *
+ * @returns {{days:number[], seen:number[], peakDay:number, total:number, cycles:number}}
+ */
+export function symptomByDay(days, state, id, maxDay = 40) {
+  const hits = new Array(maxDay).fill(0);
+  const seen = new Array(maxDay).fill(0);
+  const isMood = id.startsWith('mood:');
+  const raw = id.replace(/^mood:/, '');
+
+  const list = [...state.validCycles];
+  if (state.cycleStart) list.push({ start: state.cycleStart, next: addDays(state.today, 1) });
+
+  let cycles = 0;
+  for (const c of list) {
+    const cd = rangeDays(c.start, addDays(c.next, -1));
+    if (!cd.length) continue;
+    cycles++;
+    cd.forEach((d, i) => {
+      if (i >= maxDay) return;
+      seen[i]++;
+      const e = days[d];
+      if (!e) return;
+      const has = isMood ? (e.mood || []).includes(raw) : (e.symptoms || []).includes(raw);
+      if (has) hits[i]++;
+    });
+  }
+  const total = hits.reduce((a, b) => a + b, 0);
+  let peakDay = 0, best = 0;
+  hits.forEach((n, i) => { const r = seen[i] ? n / seen[i] : 0; if (r > best) { best = r; peakDay = i + 1; } });
+  return { days: hits, seen, peakDay: total ? peakDay : null, total, cycles };
+}
+
+/** Ar simptomas dažnėja: paskutinių ciklų dažnis prieš ankstesnių. */
+export function symptomTrend(days, state, id, window = 3) {
+  const list = state.validCycles;
+  if (list.length < window * 2) return null;
+  const isMood = id.startsWith('mood:');
+  const raw = id.replace(/^mood:/, '');
+  const countIn = c => rangeDays(c.start, addDays(c.next, -1)).filter(d => {
+    const e = days[d];
+    return e && (isMood ? (e.mood || []).includes(raw) : (e.symptoms || []).includes(raw));
+  }).length;
+  const recent = list.slice(-window).map(countIn);
+  const older = list.slice(-window * 2, -window).map(countIn);
+  const avg = a => a.reduce((x, y) => x + y, 0) / a.length;
+  const now = avg(recent), was = avg(older);
+  return { now: +now.toFixed(1), was: +was.toFixed(1), delta: +(now - was).toFixed(1) };
+}
+
+/**
+ * Vieno ciklo santrauka — kai įžvalgose paspaudžiama juosta.
+ * @param {number} index indeksas state.cycles masyve
+ */
+export function cycleDetail(days, state, index) {
+  const c = state.cycles[index];
+  if (!c) return null;
+  const end = addDays(c.next, -1);
+  const cd = rangeDays(c.start, end);
+  const ep = state.episodes.find(e => e.start === c.start);
+  const shift = bbtShift(days, cd);
+
+  const counts = {};
+  for (const d of cd) {
+    const e = days[d];
+    if (!e) continue;
+    for (const sym of e.symptoms || []) counts[sym] = (counts[sym] || 0) + 1;
+    for (const m of e.mood || []) counts['mood:' + m] = (counts['mood:' + m] || 0) + 1;
+  }
+  const top = Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 8);
+
+  const logged = cd.filter(d => days[d] && Object.keys(days[d]).length).length;
+  const bbtPoints = cd.filter(d => typeof days[d]?.bbt === 'number').length;
+
+  return {
+    index, start: c.start, end, length: c.length, valid: c.valid,
+    periodLength: ep?.length ?? c.periodLength,
+    ovulation: shift ? { date: shift.ovulation, confirmed: true, coverline: shift.coverline } : null,
+    luteal: shift ? daysBetween(shift.ovulation, c.next) - 1 : null,
+    topSymptoms: top, logged, bbtPoints, days: cd,
+    deviation: c.valid ? c.length - state.avgCycle : null,
+  };
+}
+
 /** Kiekvienai turimai dienai priskiria ciklo fazę (retrospektyviai). */
 export function dayPhaseMap(days, state) {
   const map = {};
@@ -665,6 +752,46 @@ export function bbtChart(days, cycleStart, until) {
 // ------------------------------------------------------------------ misc
 
 export function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+
+/**
+ * Perimenopauzės stadija pagal STRAW+10 (Harlow et al.) — tarptautinį standartą.
+ * Ne diagnozė: tai tik tai, ką matyti pačios moters pažymėtuose cikluose.
+ *
+ * Stadijos:
+ *   early — nuolatinis ≥ 7 d. skirtumas tarp gretimų ciklų (ankstyva pereinamoji)
+ *   late  — buvo ≥ 60 d. tarpas be mėnesinių (vėlyva pereinamoji)
+ *   post  — 12 mėn. be mėnesinių (menopauzė patvirtinama tik retrospektyviai)
+ */
+export function menopauseStatus(days, state) {
+  const lengths = state.validCycles.map(c => c.length);
+  const recent = lengths.slice(-10);
+
+  let bigJumps = 0;
+  for (let i = 1; i < recent.length; i++) if (Math.abs(recent[i] - recent[i - 1]) >= 7) bigJumps++;
+
+  const allGaps = state.cycles.map(c => c.length);
+  const longestGap = allGaps.length ? Math.max(...allGaps) : 0;
+  const sinceLast = state.cycleStart ? daysBetween(state.cycleStart, state.today) : null;
+
+  const gap = Math.max(longestGap, sinceLast || 0);
+  const stage = (sinceLast != null && sinceLast >= 365) ? 'post'
+    : gap >= 60 ? 'late'
+    : bigJumps >= 2 ? 'early'
+    : 'none';
+
+  // karščio bangos ir naktinis prakaitavimas per paskutines 90 d.
+  let hotFlashes = 0;
+  for (let i = 0; i < 90; i++) {
+    const e = days[addDays(state.today, -i)];
+    if (e && (e.symptoms || []).some(x => x === 'hot_flash' || x === 'night_sweat')) hotFlashes++;
+  }
+
+  return {
+    stage, gap, longestGap, sinceLast, bigJumps, hotFlashes,
+    // kraujavimas po metų pertraukos — visada gydytojos klausimas, ne app'o
+    seeDoctor: longestGap >= 365 && sinceLast != null && sinceLast < 30,
+  };
+}
 
 /**
  * Ar verta paklausti, ar mėnesinės tęsiasi. Be šio klausimo moterys dažnai

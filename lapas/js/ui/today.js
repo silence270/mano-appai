@@ -192,6 +192,36 @@ function ttcCard(state) {
   </div>`;
 }
 
+/**
+ * Perimenopauzė. Prognozės čia nėra — ciklai tampa nenuspėjami, ir bandymas
+ * juos spėti būtų melas. Vietoj to rodoma, kas iš tikrųjų keičiasi.
+ */
+function menopauseCard(state) {
+  const m = C.menopauseStatus(state.days, state);
+  const note = m.stage === 'early' ? t('meno_early_note', { n: m.bigJumps })
+    : m.stage === 'late' ? t('meno_late_note')
+    : m.stage === 'post' ? t('meno_post_note', { n: m.sinceLast })
+    : t('meno_none_note');
+
+  return `<div class="card">
+    <h2>${esc(t('meno_title'))}</h2>
+    <div style="font-size:19px;font-weight:700;letter-spacing:-.02em">${esc(t('meno_stage_' + m.stage))}</div>
+    <div class="note">${esc(note)}</div>
+    <div class="stats" style="margin-top:14px">
+      <div class="stat flat"><div class="k">${esc(t('meno_since'))}</div>
+        <div class="v">${m.sinceLast ?? '—'}<small>${esc(t('ins_days'))}</small></div></div>
+      <div class="stat flat"><div class="k">${esc(t('meno_longest'))}</div>
+        <div class="v">${m.longestGap || '—'}<small>${esc(t('ins_days'))}</small></div></div>
+      <div class="stat flat"><div class="k">${esc(t('meno_flashes'))}</div>
+        <div class="v">${m.hotFlashes}<small>${esc(t('days_short'))}</small></div></div>
+      <div class="stat flat"><div class="k">${esc(t('meno_jumps'))}</div>
+        <div class="v">${m.bigJumps}<small>/10</small></div></div>
+    </div>
+    ${m.seeDoctor ? `<div class="note warn" style="margin-top:12px">${esc(t('meno_see_doctor'))}</div>` : ''}
+    <div class="note">${esc(t('meno_track_tip'))}</div>
+  </div>`;
+}
+
 /** Kontracepcijos režimas: tabletė šiandien ir kaip sekasi laikytis. */
 function pillCard(state, entry) {
   const meds = entry?.meds || [];
@@ -251,6 +281,7 @@ function todaySummary(entry) {
 export function renderToday(ctx) {
   const { state, entry } = ctx;
   const isPregnancy = state.mode === 'pregnancy';
+  const isMeno = state.mode === 'perimenopause';
   const phase = state.phase;
   const inPeriod = phase === C.PHASE.MENSTRUAL;
 
@@ -260,7 +291,7 @@ export function renderToday(ctx) {
       <div class="sub">${esc(formatDate(state.today))}</div>
     </div>
 
-    ${isPregnancy ? pregnancyCard(state.pregnancy) : `
+    ${isMeno ? menopauseCard(state) : isPregnancy ? pregnancyCard(state.pregnancy) : `
       <div class="card">
         <div class="ring-wrap">
           <div class="ring">
@@ -278,6 +309,7 @@ export function renderToday(ctx) {
         </div>
         ${prediction(state)}
       </div>`}
+    ${isMeno ? `<div class="note">${esc(t('meno_predict_off'))}</div>` : ''}
 
     ${ctx.askStillBleeding ? `<div class="note acc note-row">
       <span>${esc(t('still_bleeding'))}</span>
@@ -288,8 +320,8 @@ export function renderToday(ctx) {
     ${state.skipped ? `<div class="note warn note-row">
       <span>${esc(t('skipped_ask', { n: C.daysBetween(state.cycleStart, state.today) + 1 }))}</span>
       <button class="btn sm ghost" data-act="log">${esc(t('skipped_yes'))}</button></div>` : ''}
-    ${state.quality.level === 'none' && !isPregnancy ? unknownCard(state) : ''}
-    ${state.quality.level === 'weak' && !isPregnancy
+    ${state.quality.level === 'none' && !isPregnancy && !isMeno ? unknownCard(state) : ''}
+    ${state.quality.level === 'weak' && !isPregnancy && !isMeno
       ? `<div class="note">${state.quality.reasons.map(r => esc(t('q_' + r))).join(' ')}</div>` : ''}
     ${state.mode === 'ttc' ? ttcCard(state) : ''}
     ${state.mode === 'contraception' ? pillCard(state, entry) : ''}
@@ -302,7 +334,7 @@ export function renderToday(ctx) {
     <div class="row" style="margin:14px 0 4px">
       <button class="btn block" data-act="log">${esc(t('log_today'))}</button>
     </div>
-    ${!isPregnancy ? `<div class="row" style="margin-bottom:8px">
+    ${!isPregnancy || isMeno ? `<div class="row" style="margin-bottom:8px">
       <button class="btn block ghost" data-act="quick">${esc(inPeriod ? t('quick_period_end') : t('quick_period'))}</button>
     </div>` : ''}
 

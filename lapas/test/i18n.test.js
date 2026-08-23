@@ -68,3 +68,35 @@ test('visi mėnesių kilmininkai teisingi (priebalsių kaita)', async () => {
     assert.equal(formatDate(iso), `${w} 15 d.`, `${i + 1} mėnuo`);
   });
 });
+
+test('kiekvienas kode naudojamas raktas egzistuoja žodyne', async () => {
+  const { readdirSync, readFileSync, statSync } = await import('node:fs');
+  const { join } = await import('node:path');
+  const root = new URL('../js/', import.meta.url).pathname;
+
+  const files = [];
+  (function walk(dir) {
+    for (const f of readdirSync(dir)) {
+      const p = join(dir, f);
+      if (statSync(p).isDirectory()) walk(p);
+      else if (f.endsWith('.js')) files.push(p);
+    }
+  })(root);
+
+  const known = new Set(Object.keys(dictionaries.lt));
+  const missing = new Set();
+  for (const f of files) {
+    const src = readFileSync(f, 'utf8');
+    for (const m of src.matchAll(/\bt\('([a-z][a-z_0-9]*_?)'/g)) {
+      const key = m[1];
+      if (key.endsWith('_')) {
+        // dinamiškai sudaromas raktas, pvz. t('phase_' + phase) — tikrinam, kad
+        // žodyne apskritai yra tokio prefikso eilučių
+        if (![...known].some(k => k.startsWith(key))) missing.add(`${f.split('/js/')[1]}: ${key}* (nėra nė vienos)`);
+      } else if (!known.has(key)) {
+        missing.add(`${f.split('/js/')[1]}: ${key}`);
+      }
+    }
+  }
+  assert.deepEqual([...missing], [], 'kode naudojami raktai be vertimo');
+});

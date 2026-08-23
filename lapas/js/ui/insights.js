@@ -2,10 +2,10 @@
 
 'use strict';
 
-import { el, esc } from './dom.js';
+import { el, esc, sheet, $, $$, tap } from './dom.js';
 import { t, formatDate, getLang, cycleCount } from '../i18n.js';
 import * as C from '../cycle.js';
-import { labelOf } from '../catalog.js';
+import { labelOf, itemOf } from '../catalog.js';
 
 function statCard(k, v, unit, note) {
   return `<div class="stat"><div class="k">${esc(k)}</div>
@@ -14,26 +14,35 @@ function statCard(k, v, unit, note) {
 }
 
 function cycleBars(state) {
-  const hist = C.cycleHistory(state).slice(-14);
+  const all = C.cycleHistory(state);
+  const offset = Math.max(0, all.length - 14);
+  const hist = all.slice(-14);
   if (hist.length < 2) return `<div class="empty">${esc(t('ins_cycles_empty'))}</div>`;
   const max = Math.max(...hist.map(h => h.length), state.avgCycle + 4);
-  return `<div class="bars">${hist.map(h => {
+  return `<div class="bars">${hist.map((h, k) => {
+    const i = offset + k;
     const pw = (h.periodLength / max) * 100;
     const rw = ((h.length - h.periodLength) / max) * 100;
-    return `<div class="bar-row ${h.valid ? '' : 'bad'}">
+    return `<button class="bar-row ${h.valid ? '' : 'bad'}" data-cycle="${i}"
+        aria-label="${esc(formatDate(h.start))}, ${h.length} ${esc(t('ins_days'))}">
       <span class="lbl">${esc(h.start.slice(5))}</span>
       <span class="track">
         <span class="fill p" style="width:${pw.toFixed(1)}%"></span>
         <span class="fill rest" style="width:${Math.max(0, rw).toFixed(1)}%"></span>
       </span>
       <span class="num">${h.valid ? h.length : '·'}</span>
-    </div>`;
+    </button>`;
   }).join('')}</div>`;
 }
 
 function bbtChart(state) {
   const pick = C.bbtCycleToShow(state.days, state);
   if (!pick) return `<div class="empty">${esc(t('ins_bbt_empty'))}</div>`;
+  return bbtChartFor(state, pick.start, pick.end, pick.current);
+}
+
+function bbtChartFor(state, from, to, current = true) {
+  const pick = { start: from, end: to, current };
   const { points, coverline, ovulation } = C.bbtChart(state.days, pick.start, pick.end);
   const withT = points.filter(p => p.t != null);
   if (withT.length < 4) return `<div class="empty">${esc(t('ins_bbt_empty'))}</div>`;
@@ -114,6 +123,101 @@ function patterns(state) {
     </div>`).join('')}</div>`;
 }
 
+/**
+ * Kada per ciklą pasitaiko konkretus simptomas. Juostos aukštis — dalis ciklų,
+ * kuriuose tą dieną simptomas buvo; pilkas fonas — kiek ciklų apskritai tokią
+ * dieną turėjo. Be to fono 35-a diena atrodytų reta, nors ji tiesiog retai būna.
+ */
+function timeline(state, id) {
+  const h = C.symptomByDay(state.days, state, id);
+  if (!h.total) return `<div class="empty">${esc(t('ins_no_patterns'))}</div>`;
+
+  const W = 320, H = 96, PAD = 14;
+  const maxDay = Math.max(...h.seen.map((v, i) => (v ? i + 1 : 0)), 28);
+  const bw = (W - PAD * 2) / maxDay;
+  const maxSeen = Math.max(...h.seen);
+
+  const bars = [];
+  for (let i = 0; i < maxDay; i++) {
+    const x = PAD + i * bw;
+    const seenH = maxSeen ? (h.seen[i] / maxSeen) * (H - 18) : 0;
+    const rate = h.seen[i] ? h.days[i] / h.seen[i] : 0;
+    const hitH = rate * (H - 18);
+    bars.push(`<rect x="${x.toFixed(1)}" y="${(H - 18 - seenH).toFixed(1)}" width="${(bw - 1).toFixed(1)}"
+      height="${seenH.toFixed(1)}" fill="var(--bg-soft)" rx="1"/>`);
+    if (hitH > 0) bars.push(`<rect x="${x.toFixed(1)}" y="${(H - 18 - hitH).toFixed(1)}"
+      width="${(bw - 1).toFixed(1)}" height="${hitH.toFixed(1)}" fill="var(--accent)" rx="1"/>`);
+  }
+  const ticks = [1, 7, 14, 21, 28].filter(d => d <= maxDay);
+
+  const tr = C.symptomTrend(state.days, state, id);
+  const trendTxt = !tr ? '' : Math.abs(tr.delta) < 0.5 ? t('trend_flat')
+    : t(tr.delta > 0 ? 'trend_up' : 'trend_down',
+        { was: String(tr.was).replace('.', ','), now: String(tr.now).replace('.', ',') });
+
+  return `
+    <svg class="chart" viewBox="0 0 ${W} ${H}" style="height:110px" preserveAspectRatio="none">
+      ${bars.join('')}
+      ${ticks.map(d => `<text x="${(PAD + (d - 0.5) * bw).toFixed(1)}" y="${H - 4}" text-anchor="middle">${d}</text>`).join('')}
+    </svg>
+    <div style="font-size:12px;color:var(--ink-3);text-align:right;margin-top:-4px">${esc(t('timeline_axis'))}</div>
+    ${h.peakDay ? `<div class="note">${esc(t('timeline_peak', { n: h.peakDay }))}${
+      trendTxt ? ' · ' + esc(trendTxt) : ''}</div>` : ''}`;
+}
+
+/** Vieno ciklo santrauka — atsidaro paspaudus juostą istorijoje. */
+function openCycleDetail(state, index) {
+  const d = C.cycleDetail(state.days, state, index);
+  if (!d) return;
+  const lang = getLang();
+  const s = sheet({ title: t('cycle_detail') });
+
+  const dev = d.deviation == null ? t('cd_outlier')
+    : Math.abs(d.deviation) <= 1 ? t('cd_as_usual')
+    : t(d.deviation > 0 ? 'cd_vs_avg' : 'cd_vs_avg_less', { n: Math.abs(d.deviation) });
+
+  s.body.innerHTML = `
+    <div style="font-size:15px;font-weight:650;margin:4px 2px 14px">
+      ${esc(formatDate(d.start))} – ${esc(formatDate(d.end))}
+    </div>
+    <div class="stats">
+      <div class="stat"><div class="k">${esc(t('cd_length'))}</div>
+        <div class="v">${d.length}<small>${esc(t('ins_days'))}</small></div>
+        <div class="n">${esc(dev)}</div></div>
+      <div class="stat"><div class="k">${esc(t('cd_period'))}</div>
+        <div class="v">${d.periodLength}<small>${esc(t('ins_days'))}</small></div></div>
+      <div class="stat"><div class="k">${esc(t('cd_ovulation'))}</div>
+        <div class="v" style="font-size:17px">${d.ovulation
+          ? esc(formatDate(d.ovulation.date)) : '—'}</div>
+        <div class="n">${d.ovulation ? esc(t('ttc_confirmed')) : esc(t('cd_no_ovulation'))}</div></div>
+      <div class="stat"><div class="k">${esc(t('cd_logged'))}</div>
+        <div class="v">${d.logged}<small>/${d.length}</small></div></div>
+    </div>
+    ${d.luteal ? `<div class="note">${esc(t('cd_luteal'))}: ${d.luteal} ${esc(t('ins_days'))}</div>` : ''}
+    ${d.topSymptoms.length ? `<div class="grp"><h3>${esc(t('cd_symptoms'))}</h3>
+      <div class="chips">${d.topSymptoms.map(([id, n]) =>
+        `<span class="chip">${esc(labelOf(id, lang))} · ${n}</span>`).join('')}</div></div>` : ''}
+    ${d.bbtPoints >= 4 ? `<div class="grp"><h3>${esc(t('ins_bbt'))}</h3>
+      ${bbtChartFor(state, d.start, d.end)}</div>` : ''}
+    <div style="height:12px"></div>`;
+}
+
+/** Simptomo pasirinkimas ir jo pasiskirstymas per ciklą. */
+function timelineBlock(state, picked) {
+  const pat = C.symptomPatterns(state.days, state);
+  const opts = Object.entries(pat).filter(([, v]) => v.total >= 3)
+    .sort((a, b) => b[1].total - a[1].total).slice(0, 8).map(([id]) => id);
+  if (!opts.length) return `<div class="empty">${esc(t('ins_no_patterns'))}</div>`;
+  const cur = opts.includes(picked) ? picked : opts[0];
+  const lang = getLang();
+  return `
+    <div class="chips" style="margin-bottom:14px">
+      ${opts.map(id => `<button class="chip ${id === cur ? 'on' : ''}" data-sym="${esc(id)}">
+        ${esc(labelOf(id, lang))}</button>`).join('')}
+    </div>
+    ${timeline(state, cur)}`;
+}
+
 export function renderInsights(ctx) {
   const { state } = ctx;
   const reg = C.regularity(state);
@@ -122,7 +226,7 @@ export function renderInsights(ctx) {
     : reg.level === 'very_regular' ? t('reg_very_regular_note')
     : t('reg_' + reg.level + '_note', { n: cldTxt });
 
-  return el(`<div class="screen">
+  const node = el(`<div class="screen">
     <div class="head"><h1>${esc(t('nav_insights'))}</h1>
       <div class="sub">${state.validCycles.length ? esc(cycleCount(state.validCycles.length)) : ''}</div></div>
 
@@ -143,6 +247,7 @@ export function renderInsights(ctx) {
     <div class="card"><h2>${esc(t('ins_history'))}</h2>${cycleBars(state)}</div>
     <div class="card"><h2>${esc(t('ins_bbt'))}</h2>${bbtChart(state)}</div>
     <div class="card"><h2>${esc(t('ins_patterns'))}</h2>${patterns(state)}</div>
+    <div class="card" id="timeline-card"><h2>${esc(t('ins_timeline'))}</h2>${timelineBlock(state, ctx.timelinePick)}</div>
     <div class="card"><h2>${esc(t('cal_title'))}</h2>${calibrationBlock(state)}</div>
 
     <div class="card flat">
@@ -156,4 +261,18 @@ export function renderInsights(ctx) {
       </div>
     </div>
   </div>`);
+
+  node.addEventListener('click', e => {
+    const bar = e.target.closest('[data-cycle]');
+    if (bar) { tap(); openCycleDetail(state, +bar.dataset.cycle); return; }
+    const sym = e.target.closest('[data-sym]');
+    if (sym) {
+      tap();
+      ctx.timelinePick = sym.dataset.sym;
+      const card = $('#timeline-card', node);
+      card.innerHTML = `<h2>${esc(t('ins_timeline'))}</h2>${timelineBlock(state, ctx.timelinePick)}`;
+    }
+  });
+
+  return node;
 }
