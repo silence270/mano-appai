@@ -111,7 +111,7 @@ function draw() {
     entry: days[state.today],
     needsBackup: set === 'rich',
     onLog: iso => openLog(iso, days[iso], async () => {}),
-    onQuickPeriod: () => {}, onSettings: async () => {}, onBackup: () => {}, onPill: () => {},
+    onQuickPeriod: () => {}, onSettings: async () => {}, onBackup: () => {}, onPill: () => {}, onPickDay: () => {},
     readAll: async () => ({ days, settings }), applyImport: async () => 0,
     rerender: draw,
   };
@@ -144,22 +144,31 @@ document.getElementById('sweep').onclick = () => {
   const problems = [];
   const keep = { screen, set, lang, mode: settings.mode };
   let n = 0;
-  for (const s2 of ['rich', 'irregular', 'fresh', 'empty'])
+  for (const th of ['light', 'dark'])
+   for (const s2 of ['rich', 'irregular', 'fresh', 'empty'])
     for (const m of ['track', 'ttc', 'pregnancy', 'contraception'])
       for (const sc of ['today', 'calendar', 'insights', 'settings'])
         for (const lg of ['lt', 'en']) {
           n++;
           set = s2; settings.mode = m; screen = sc; lang = lg;
+          document.documentElement.setAttribute('data-theme', th);
           if (m === 'pregnancy') settings.pregnancyStart = C.addDays(C.todayISO(), -145);
           try {
             draw();
             const txt = document.getElementById('host').innerText || '';
             const raw = txt.match(/\b[a-z]{2,}_[a-z_0-9]{2,}\b/g);
-            if (raw) problems.push(`${s2}/${m}/${sc}/${lg}: neišversta ${[...new Set(raw)].join(',')}`);
-            if (/undefined|NaN/.test(txt)) problems.push(`${s2}/${m}/${sc}/${lg}: undefined/NaN`);
-          } catch (e) { problems.push(`${s2}/${m}/${sc}/${lg}: ${e.message}`); }
+            const tag = `${th}/${s2}/${m}/${sc}/${lg}`;
+            if (raw) problems.push(`${tag}: neišversta ${[...new Set(raw)].join(',')}`);
+            if (/undefined|NaN/.test(txt)) problems.push(`${tag}: undefined/NaN`);
+            // tekstas, susiliejęs su fonu, yra tokia pat klaida kaip ir sugriuvęs ekranas
+            for (const el of document.querySelectorAll('#host .note, #host .item b, #host .stat .v, #host .seg button')) {
+              const cs = getComputedStyle(el);
+              if (cs.color === cs.backgroundColor) problems.push(`${tag}: nematomas tekstas`);
+            }
+          } catch (e) { problems.push(`${th}/${s2}/${m}/${sc}/${lg}: ${e.message}`); }
         }
   screen = keep.screen; set = keep.set; lang = keep.lang; settings.mode = keep.mode;
+  document.documentElement.setAttribute('data-theme', settings.theme === 'light' ? 'light' : 'dark');
   draw();
   alert(problems.length ? `${problems.length} iš ${n}:\n\n` + problems.slice(0, 20).join('\n')
                         : `Švaru — patikrinta ${n} kombinacijų.`);

@@ -124,6 +124,7 @@ export async function saveDay(iso, patch) {
   const days = await getDays();
   const merged = { ...(days[iso] || {}), ...patch };
   for (const [k, v] of Object.entries(merged)) {
+    if (v === false) { delete merged[k]; continue; }
     if (v === null || v === undefined || v === '' ||
         (Array.isArray(v) && v.length === 0) ||
         (k === 'flow' && v === 0)) delete merged[k];

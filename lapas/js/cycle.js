@@ -666,6 +666,20 @@ export function bbtChart(days, cycleStart, until) {
 
 export function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
 
+/**
+ * Ar verta paklausti, ar mėnesinės tęsiasi. Be šio klausimo moterys dažnai
+ * pažymi tik pirmą dieną, ir mėnesinių trukmė lieka neteisinga — o ji naudojama
+ * ir kalendoriuje, ir prognozėje.
+ */
+export function shouldAskStillBleeding(days, today = todayISO()) {
+  const y = days[addDays(today, -1)];
+  if (!y || (y.flow ?? 0) < MENSTRUAL_MIN) return false;
+  const t = days[today] || {};
+  // „nepažymėta" ir „pažymėta, kad nebėra" yra skirtingi dalykai: pirmu atveju
+  // klausiame, antru — nutylime. Todėl atsakymas „baigėsi" saugomas atskirai.
+  return t.flow === undefined && !t.periodEnded;
+}
+
 /** Ar verta pasiūlyti nėštumo testą (be dramos: tik po realaus vėlavimo). */
 export function suggestTest(state) {
   return state.mode !== 'pregnancy' && state.late >= 7 && !state.stale;

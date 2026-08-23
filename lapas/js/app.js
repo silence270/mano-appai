@@ -94,10 +94,27 @@ async function markPill() {
   toast(t('pill_taken_today'));
 }
 
-async function quickPeriod(ending) {
-  const today = C.todayISO();
-  await saveDay(today, ending ? { flow: 0 } : { flow: 3 });
+async function quickPeriod(ending, when) {
+  const day = when || C.todayISO();
+  await saveDay(day, ending ? { flow: 0 } : { flow: 3 });
   toast(ending ? t('quick_period_end') : t('quick_period'));
+}
+
+/** Atsakymas į „ar mėnesinės tęsiasi": „ne" pažymima kaip nulinis srautas,
+ *  kad epizodas užsidarytų ir nebūtų klausiama kas dieną. */
+async function stillBleeding(yes) {
+  const today = C.todayISO();
+  const yFlow = app.days[C.addDays(today, -1)]?.flow ?? 3;
+  await saveDay(today, yes
+    ? { flow: Math.max(2, yFlow - 1) }
+    : { flow: 0, periodEnded: true });
+}
+
+/** „Kita diena…" — nusiunčia į kalendorių, kur galima pasirinkti bet kurią praeities dieną. */
+function pickDay() {
+  app.tab = 'calendar';
+  render();
+  toast(t('when_started'));
 }
 
 async function onSettings(patch, silent) {
@@ -144,6 +161,9 @@ function render() {
     onLog: log,
     onQuickPeriod: quickPeriod,
     onPill: markPill,
+    onPickDay: pickDay,
+    onStillBleeding: stillBleeding,
+    askStillBleeding: C.shouldAskStillBleeding(app.days, app.state.today),
     onSettings,
     onBackup: () => { app.tab = 'settings'; render(); },
     readAll,

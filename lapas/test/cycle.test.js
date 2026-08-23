@@ -374,3 +374,26 @@ test('temperatūros grafikas parenka ciklą, kuriame yra ką rodyti', () => {
   assert.ok(chart.points.filter(p => p.t != null).length >= 9);
   assert.ok(chart.ovulation, 'praėjusiame cikle matomas temperatūros šuolis');
 });
+
+test('klausiama, ar mėnesinės tęsiasi — bet tik kai tikrai nežinoma', () => {
+  const t = '2026-08-23', y = '2026-08-22';
+  assert.equal(C.shouldAskStillBleeding({ [y]: { flow: 3 } }, t), true,
+    'vakar buvo srautas, šiandien nieko — reikia paklausti');
+  assert.equal(C.shouldAskStillBleeding({ [y]: { flow: 3 }, [t]: { flow: 2 } }, t), false,
+    'šiandien jau pažymėta');
+  assert.equal(C.shouldAskStillBleeding({ [y]: { flow: 3 }, [t]: { periodEnded: true } }, t), false,
+    'atsakyta „baigėsi" — antrą kartą neklausiam');
+  assert.equal(C.shouldAskStillBleeding({ [y]: { flow: 1 } }, t), false,
+    'lašeliai nėra mėnesinės');
+  assert.equal(C.shouldAskStillBleeding({ [y]: { symptoms: ['cramps'] } }, t), false);
+  assert.equal(C.shouldAskStillBleeding({}, t), false);
+});
+
+test('mėnesinių trukmė teisinga, kai pažymėtos visos dienos', () => {
+  const days = {};
+  for (let i = 0; i < 5; i++) days[C.addDays('2026-08-01', i)] = { flow: i < 3 ? 4 : 2 };
+  days['2026-08-06'] = { flow: 0, periodEnded: true };
+  const eps = C.periodEpisodes(days);
+  assert.equal(eps.length, 1);
+  assert.equal(eps[0].length, 5, '„baigėsi" žyma neturi pratęsti epizodo');
+});

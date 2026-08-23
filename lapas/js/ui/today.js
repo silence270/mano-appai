@@ -2,7 +2,7 @@
 
 'use strict';
 
-import { el, esc, ICON } from './dom.js';
+import { el, esc, ICON, sheet, $, tap } from './dom.js';
 import { t, formatDate, formatRange, getLang, cycleCount } from '../i18n.js';
 import * as C from '../cycle.js';
 import { FLOW_LEVELS, labelOf, fetusSize } from '../catalog.js';
@@ -46,8 +46,8 @@ function ring(state) {
 
   return `<svg viewBox="0 0 200 200" aria-hidden="true">
     <circle cx="100" cy="100" r="${R}" fill="none" stroke="var(--ring-track)" stroke-width="13"/>
-    ${wideFrom ? arc(wideFrom, wideTo, cycle, '', 13).replace('class=""', 'stroke="var(--sage)" opacity="0.17"') : ''}
-    ${fertFrom ? arc(fertFrom, fertTo, cycle, '', 13).replace('class=""', 'stroke="var(--sage-bg)"') : ''}
+    ${wideFrom ? arc(wideFrom, wideTo, cycle, '', 13).replace('class=""', 'stroke="var(--ring-fertile)" opacity="0.45"') : ''}
+    ${fertFrom ? arc(fertFrom, fertTo, cycle, '', 13).replace('class=""', 'stroke="var(--ring-fertile)"') : ''}
     ${arc(1, period, cycle, '', 13).replace('class=""', 'stroke="var(--accent)"')}
     ${ovDay ? arc(ovDay, ovDay, cycle, '', 13).replace('class=""', 'stroke="var(--sage)"') : ''}
     ${marker}
@@ -56,6 +56,29 @@ function ring(state) {
 
 function phaseClass(phase) {
   return [C.PHASE.FERTILE, C.PHASE.OVULATION].includes(phase) ? 'sage' : '';
+}
+
+/**
+ * Mėnesinės retai prasideda tada, kai apie jas prisimeni pažymėti — dažniau
+ * naktį ar vakar. Todėl klausiama datos, o ne tyliai imama šiandiena.
+ */
+function askWhen(state, ending, ctx) {
+  const s = sheet({ title: t(ending ? 'when_ended' : 'when_started') });
+  const opts = [
+    ['0', t('when_today')], ['1', t('when_yesterday')], ['2', t('when_2days')],
+  ];
+  s.body.innerHTML = `<div class="picks" style="margin-top:6px">
+    ${opts.map(([d, label]) => `<button class="pick" data-back="${d}">
+      <span class="mark"></span><span class="txt"><b>${esc(label)}</b>
+      <span>${esc(formatDate(C.addDays(state.today, -d)))}</span></span></button>`).join('')}
+    <button class="pick" data-other="1"><span class="mark"></span>
+      <span class="txt"><b>${esc(t('when_other'))}</b></span></button>
+  </div>`;
+  s.body.addEventListener('click', e => {
+    const b = e.target.closest('[data-back]');
+    if (b) { tap(); s.close(); ctx.onQuickPeriod(ending, C.addDays(state.today, -(+b.dataset.back))); return; }
+    if (e.target.closest('[data-other]')) { tap(); s.close(); ctx.onPickDay(ending); }
+  });
 }
 
 /** Kodėl prognozės nerodome — sąrašas priežasčių žmogaus kalba. */
@@ -256,6 +279,12 @@ export function renderToday(ctx) {
         ${prediction(state)}
       </div>`}
 
+    ${ctx.askStillBleeding ? `<div class="note acc note-row">
+      <span>${esc(t('still_bleeding'))}</span>
+      <span style="display:flex;gap:8px">
+        <button class="btn sm" data-act="still-yes">${esc(t('still_yes'))}</button>
+        <button class="btn sm ghost" data-act="still-no">${esc(t('still_no'))}</button>
+      </span></div>` : ''}
     ${state.skipped ? `<div class="note warn note-row">
       <span>${esc(t('skipped_ask', { n: C.daysBetween(state.cycleStart, state.today) + 1 }))}</span>
       <button class="btn sm ghost" data-act="log">${esc(t('skipped_yes'))}</button></div>` : ''}
@@ -283,8 +312,10 @@ export function renderToday(ctx) {
   </div>`);
 
   node.querySelector('[data-act="log"]')?.addEventListener('click', () => ctx.onLog(state.today));
-  node.querySelector('[data-act="quick"]')?.addEventListener('click', () => ctx.onQuickPeriod(inPeriod));
+  node.querySelector('[data-act="quick"]')?.addEventListener('click', () => askWhen(state, inPeriod, ctx));
   node.querySelector('[data-act="backup"]')?.addEventListener('click', () => ctx.onBackup());
   node.querySelector('[data-act="pill"]')?.addEventListener('click', () => ctx.onPill());
+  node.querySelector('[data-act="still-yes"]')?.addEventListener('click', () => ctx.onStillBleeding(true));
+  node.querySelector('[data-act="still-no"]')?.addEventListener('click', () => ctx.onStillBleeding(false));
   return node;
 }
