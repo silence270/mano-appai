@@ -265,8 +265,8 @@ function importSheet(ctx) {
     const pass = $('#im-pass', s.body).value;
     try {
       const payload = await T.parseFile(text, pass || undefined);
-      const n = await ctx.applyImport(payload, mode);
-      toast(t('imported', { n }));
+      const r = await ctx.applyImport(payload, mode);
+      toast(r.dropped ? t('imported_dropped', { n: r.n, d: r.dropped }) : t('imported', { n: r.n }));
       s.close();
     } catch (e) {
       if (e.code === 'NEED_PASSWORD') { $('#im-pass-box', s.body).hidden = false; toast(t('import_password')); }

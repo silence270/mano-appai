@@ -10,6 +10,7 @@
 'use strict';
 
 import { encryptJSON, decryptJSON, isEncrypted, randomBytes, b64, pinCheck } from './crypto.js';
+import { sanitizeDays, sanitizeSettings } from './sanitize.js';
 
 const DB_NAME = 'lapas';
 const STORE = 'vault';
@@ -114,10 +115,16 @@ async function writeVal(key, value) {
   await rawPut(key, _key === null ? value : await encryptJSON(value, _key));
 }
 
-export const getDays = () => readVal('days', {});
-export const putDays = d => writeVal('days', d);
-export const getSettings = async () => ({ ...DEFAULT_SETTINGS, ...(await readVal('settings', {})) });
-export const putSettings = s => writeVal('settings', s);
+/**
+ * Skaitant valoma taip pat, kaip importuojant: saugykloje gali gulėti duomenys,
+ * įrašyti senesnės versijos arba anksčiau įkelti iš sugadinto failo. App'as
+ * neturi lūžti dėl vieno lauko, kurio jis nebesupranta.
+ */
+export const getDays = async () => sanitizeDays(await readVal('days', {})).days;
+export const putDays = d => writeVal('days', sanitizeDays(d).days);
+export const getSettings = async () =>
+  ({ ...DEFAULT_SETTINGS, ...sanitizeSettings(await readVal('settings', {})) });
+export const putSettings = s => writeVal('settings', { ...s, ...sanitizeSettings(s) });
 
 /** Vienos dienos įrašas — sujungiamas, o ne perrašomas. Tušti laukai išvalomi. */
 export async function saveDay(iso, patch) {

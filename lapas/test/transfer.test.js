@@ -4,18 +4,21 @@ import assert from 'node:assert/strict';
 import * as T from '../js/transfer.js';
 import { encryptJSON, decryptJSON } from '../js/crypto.js';
 
+/** Duomenys tokie, kokius app'as iš tikrųjų saugo: be tuščių laukų ir be flow: 0
+ *  (juos db.saveDay ir importo valymas šalina kaip beprasmius). */
 function fakeDays(n) {
   const days = {};
   let d = new Date(Date.UTC(2025, 0, 1));
   for (let i = 0; i < n; i++) {
     const iso = d.toISOString().slice(0, 10);
-    days[iso] = {
-      flow: i % 28 < 5 ? 3 : 0,
+    const e = {
       symptoms: i % 3 ? ['cramps', 'bloating'] : ['headache'],
       mood: ['calm'],
-      bbt: 36.4 + (i % 7) * 0.05,
-      notes: i % 10 ? '' : 'Ilgesnis užrašas su lietuviškomis raidėmis: ąčęėįšųūž',
+      bbt: +(36.4 + (i % 7) * 0.05).toFixed(2),
     };
+    if (i % 28 < 5) e.flow = 3;
+    if (i % 10 === 0) e.notes = 'Ilgesnis užrašas su lietuviškomis raidėmis: ąčęėįšųūž';
+    days[iso] = e;
     d = new Date(d.getTime() + 86400000);
   }
   return days;
@@ -193,4 +196,97 @@ test('suspaudimas prieš šifravimą duoda mažiau kadrų nei atvirkščiai', as
   // šifruotas srautas gali būti tik nežymiai didesnis (salt+iv+tag), o ne trečdaliu
   assert.ok(enc.length <= plain.length + 1,
     `šifravimas išpūtė srautą: ${plain.length} → ${enc.length} kadrų`);
+});
+
+// --- importuojamų duomenų valymas -----------------------------------------
+
+test('neegzistuojančios datos atmetamos', () => {
+  for (const bad of ['ne-data', '2026-13-01', '2026-02-30', '2026-00-10', '26-01-01', '', null, 42])
+    assert.equal(T.isRealDate(bad), false, `${bad} neturi būti data`);
+  for (const good of ['2026-08-23', '2024-02-29', '2026-12-31'])
+    assert.equal(T.isRealDate(good), true, `${good} yra data`);
+});
+
+test('sugadintas failas nesulaužo app’o: blogos reikšmės išmetamos, geros lieka', async () => {
+  const raw = {
+    'ne-data': { flow: 3 },
+    '2026-13-45': { flow: 3 },
+    '2026-08-01': { flow: 'labai gausus', bbt: 999, symptoms: 'ne masyvas',
+                    notes: 'x'.repeat(50000), nezinomas: { gilus: { objektas: 1 } } },
+    '2026-08-02': { flow: -5, mood: [{ piktas: 'objektas' }, 'calm'], sex: null },
+    '2026-08-03': { flow: 3.7, bbt: '36,5', symptoms: ['cramps', 'cramps', 'bloating'] },
+    '2026-08-04': { energy: 99, sleep: -3, weight: 5000 },
+  };
+  const { days, dropped, cleaned } = T.sanitizeDays(raw);
+
+  assert.ok(!days['ne-data'] && !days['2026-13-45'], 'blogos datos');
+  assert.equal(dropped, 3, 'dvi blogos datos + viena tuščia diena');
+
+  assert.equal(days['2026-08-01'].flow, undefined, 'tekstas nėra srautas');
+  assert.equal(days['2026-08-01'].bbt, undefined, '999 °C nėra temperatūra');
+  assert.equal(days['2026-08-01'].nezinomas, undefined, 'nežinomi laukai išmetami');
+  assert.equal(days['2026-08-01'].notes.length, 2000, 'užrašas apkarpomas');
+
+  assert.deepEqual(days['2026-08-02'].mood, ['calm'], 'objektai iš sąrašo išmetami');
+  assert.equal(days['2026-08-02'].flow, undefined, 'neigiamas srautas');
+
+  assert.equal(days['2026-08-03'].flow, 4, 'apvalinama');
+  assert.deepEqual(days['2026-08-03'].symptoms, ['cramps', 'bloating'], 'dublikatai šalinami');
+
+  assert.equal(days['2026-08-04'], undefined, 'vien tik blogos reikšmės — dienos nelieka');
+  assert.ok(cleaned >= 2);
+});
+
+test('svetimi nustatymai neperrašo app’o konfigūracijos šiukšlėmis', () => {
+  const s = T.sanitizeSettings({ lang: 'klingonų', avgCycle: 900, birthYear: 1200,
+    mode: 'piktas', theme: 'neon', weekStart: 5, pregnancyStart: 'vakar', extra: 'x' });
+  assert.deepEqual(s, {}, 'nė vienas laukas neturi praeiti');
+
+  const ok = T.sanitizeSettings({ lang: 'en', avgCycle: 31, birthYear: 1993,
+    mode: 'perimenopause', theme: 'dark', weekStart: 0, pregnancyStart: '2026-01-05' });
+  assert.equal(ok.lang, 'en');
+  assert.equal(ok.avgCycle, 31);
+  assert.equal(ok.mode, 'perimenopause');
+  assert.equal(ok.pregnancyStart, '2026-01-05');
+});
+
+test('valymas įjungtas ir faile, ir QR sraute', async () => {
+  const dirty = { '2026-08-01': { flow: 3 }, 'ne-data': { flow: 3 }, '2026-08-02': { bbt: 500 } };
+  const file = JSON.stringify({ app: 'lapas', v: 1, days: dirty });
+  const viaFile = await T.parseFile(file);
+  assert.deepEqual(Object.keys(viaFile.days), ['2026-08-01']);
+  assert.equal(viaFile._clean.dropped, 2);
+
+  const frames = await T.buildFrames({ app: 'lapas', v: 1, days: dirty });
+  const col = T.createCollector();
+  for (const f of frames) col.feed(f);
+  const viaQR = await col.assemble();
+  assert.deepEqual(Object.keys(viaQR.days), ['2026-08-01']);
+  assert.equal(viaQR._clean.dropped, 2);
+});
+
+test('QR srautas su svetimu turiniu atmetamas, o ne priimamas tyliai', async () => {
+  const frames = await T.buildFrames({ app: 'kitas', days: { '2026-08-01': { flow: 3 } } });
+  const col = T.createCollector();
+  for (const f of frames) col.feed(f);
+  await assert.rejects(() => col.assemble(), e => e.code === 'BAD_FILE');
+});
+
+test('service worker talpykloje yra visi app’o moduliai', async () => {
+  const { readFileSync, readdirSync, statSync } = await import('node:fs');
+  const { join } = await import('node:path');
+  const sw = readFileSync(new URL('../sw.js', import.meta.url), 'utf8');
+
+  const root = new URL('../js/', import.meta.url).pathname;
+  const modules = [];
+  (function walk(dir, prefix) {
+    for (const f of readdirSync(dir)) {
+      const p = join(dir, f);
+      if (statSync(p).isDirectory()) walk(p, `${prefix}${f}/`);
+      else if (f.endsWith('.js')) modules.push(`./js/${prefix}${f}`);
+    }
+  })(root, '');
+
+  const missing = modules.filter(m => !sw.includes(m));
+  assert.deepEqual(missing, [], 'moduliai, kurių nebus offline');
 });

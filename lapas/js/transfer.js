@@ -19,6 +19,9 @@
 'use strict';
 
 import { encryptJSON, decryptJSON, encryptBytes, decryptBytes, isEncrypted, b64, unb64 } from './crypto.js';
+import { sanitizeDays, sanitizeSettings } from './sanitize.js';
+
+export { sanitizeDays, sanitizeSettings, isRealDate } from './sanitize.js';
 
 export const FILE_VERSION = 1;
 
@@ -94,7 +97,13 @@ export async function parseFile(text, password) {
     obj = await decryptJSON(obj.enc, password);          // meta WRONG_SECRET
   }
   if (!obj.days || typeof obj.days !== 'object') throw codeErr('BAD_FILE');
-  return obj;
+  const clean = sanitizeDays(obj.days);
+  return {
+    ...obj,
+    days: clean.days,
+    settings: sanitizeSettings(obj.settings),
+    _clean: { dropped: clean.dropped, cleaned: clean.cleaned },
+  };
 }
 
 function codeErr(code) { const e = new Error(code); e.code = code; return e; }
@@ -179,7 +188,11 @@ export function createCollector() {
         bytes = await decryptBytes(bytes, code);       // meta WRONG_SECRET
       }
       const raw = zip ? await gunzip(bytes) : bytes;
-      return JSON.parse(new TextDecoder().decode(raw));
+      const obj = JSON.parse(new TextDecoder().decode(raw));
+      if (!obj || obj.app !== 'lapas' || !obj.days) throw codeErr('BAD_FILE');
+      const clean = sanitizeDays(obj.days);
+      return { ...obj, days: clean.days, settings: sanitizeSettings(obj.settings),
+               _clean: { dropped: clean.dropped, cleaned: clean.cleaned } };
     },
     reset() { parts.clear(); total = len = sum = zip = enc = chunk = null; },
   };

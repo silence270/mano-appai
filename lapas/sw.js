@@ -3,11 +3,11 @@
  * Tinklas naudojamas tik naujesnei versijai parsisiųsti fone.
  */
 
-const V = 'lapas-v1';
+const V = 'lapas-v2';
 const ASSETS = [
   './', './index.html', './styles.css', './manifest.json',
   './js/app.js', './js/cycle.js', './js/db.js', './js/crypto.js',
-  './js/i18n.js', './js/catalog.js', './js/transfer.js',
+  './js/i18n.js', './js/catalog.js', './js/transfer.js', './js/sanitize.js', './js/predict.js',
   './js/ui/dom.js', './js/ui/today.js', './js/ui/calendar.js',
   './js/ui/insights.js', './js/ui/settings.js', './js/ui/log.js',
   './js/ui/lock.js', './js/ui/onboarding.js', './js/ui/qr.js',

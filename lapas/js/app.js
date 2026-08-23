@@ -139,7 +139,7 @@ async function applyImport(payload, mode) {
   await reload();
   resetCursor();
   render();
-  return Object.keys(incoming).length;
+  return { n: Object.keys(incoming).length, dropped: payload._clean?.dropped || 0 };
 }
 
 function log(iso) {

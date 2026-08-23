@@ -218,6 +218,7 @@ const LT = {
   import_merge: 'Sujungti', import_merge_note: 'Esami įrašai lieka, nauji pridedami.',
   import_replace: 'Pakeisti', import_replace_note: 'Viskas telefone pakeičiama failo turiniu.',
   import_do: 'Įkelti', imported: 'Įkelta {n} dienų įrašų.',
+  imported_dropped: 'Įkelta {n} dienų įrašų · {d} netinkamų praleista.',
   // QR
   qr_title: 'Perkelti į kitą telefoną',
   qr_intro: 'Be interneto, be debesies: senas telefonas rodo kodus, naujas nuskaito kamera.',
@@ -442,6 +443,7 @@ const EN = {
   import_merge: 'Merge', import_merge_note: 'Existing entries stay, new ones are added.',
   import_replace: 'Replace', import_replace_note: 'Everything on this phone is replaced by the file.',
   import_do: 'Restore', imported: 'Restored {n} daily entries.',
+  imported_dropped: 'Restored {n} daily entries · {d} invalid ones skipped.',
   qr_title: 'Move to another phone',
   qr_intro: 'No internet, no cloud: the old phone shows codes, the new one reads them with the camera.',
   qr_send: 'Send from this phone', qr_receive: 'Receive on this phone',
