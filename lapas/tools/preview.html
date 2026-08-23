@@ -108,7 +108,7 @@ function draw() {
   const ctx = {
     state, settings, days,
     storage: { usage: 48000, persisted: false },
-    bio: { available: true, enabled: false }, isDecoy: false, onLockNow: () => {}, autoLang: 'lt',
+    bio: { available: true, enabled: false }, isDecoy: false, onLockNow: () => {}, wipeAfter: 0, autoLang: 'lt',
     entry: days[state.today],
     needsBackup: set === 'rich',
     onLog: iso => openLog(iso, days[iso], async () => {}, { frequent: C.mostUsed(days, C.todayISO()) }),

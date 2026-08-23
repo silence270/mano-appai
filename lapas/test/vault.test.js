@@ -51,7 +51,7 @@ test('saugyklos ir raktų vardai nieko nesako apie app’ą', async () => {
   const map = idb.raw();
   assert.ok(map, 'saugykla turi vadintis „appdata", ne „lapas"');
   for (const k of map.keys())
-    assert.ok(/^[a-d]$/.test(k), `raktas „${k}" per daug pasakoja`);
+    assert.ok(/^[a-g]$/.test(k), `raktas „${k}" per daug pasakoja`);
   assert.equal(idb.raw('lapas', 'vault'), null, 'senojo vardo nebeturi likti');
 });
 
@@ -378,4 +378,82 @@ test('visos app’o naudojamos saugyklos funkcijos iš tikrųjų egzistuoja', as
       if (!exported.has(m[1])) missing.push(`${f}: dinaminis ${m[1]}`);
   }
   assert.deepEqual([...new Set(missing)], []);
+});
+
+// --- „kai over tai over" ---------------------------------------------------
+
+test('slaptažodžio frazė daug stipresnė už PIN', async () => {
+  const ph = await V.makePassphrase();
+  assert.equal(ph.split('-').length, 6);
+  assert.ok(V.strengthOf(ph).bits >= 60, `frazė ${V.strengthOf(ph).bits} bitų`);
+  assert.ok(V.strengthOf('4821').bits < 15, '4 skaitmenys — 13 bitų');
+  assert.equal(V.normalisePhrase('  Acid  ACORN acre '), 'acid-acorn-acre');
+});
+
+test('frazė atrakina taip pat, kaip PIN', async () => {
+  const ph = await V.makePassphrase();
+  await V.wipe(); idb.reset();
+  await V.initialise(ph, SAMPLE);
+  V.lock();
+  assert.equal((await V.unlock(ph)).ok, true);
+  V.lock();
+  assert.equal((await V.unlock(ph.toUpperCase().replace(/-/g, ' '))).ok, true,
+    'didžiosios ir tarpai neturi trukdyti');
+  assert.deepEqual((await V.readAll()).days, SAMPLE.days);
+});
+
+test('sunaikinimo kodas atveria tuščią app’ą, o tikrus duomenis sunaikina', async () => {
+  await fresh('4821');
+  await V.setDuressCode('9999', { days: {}, settings: {} });
+
+  V.lock();
+  const r = await V.unlock('9999');
+  assert.equal(r.ok, true);
+  assert.equal(r.destroyed, true, 'turi pasakyti, kad duomenys sunaikinti');
+
+  // tikrasis PIN nebeatrakina nieko — duomenų nebėra
+  V.lock();
+  assert.equal((await V.unlock('4821')).ok, false, 'tikrieji duomenys turi būti dingę');
+});
+
+test('sunaikinimo skyrius egzistuoja nuo pat pradžių', async () => {
+  await fresh('4821');
+  const map = idb.raw();
+  assert.ok(map.get('g') instanceof Uint8Array, 'trečias skyrius visada yra');
+  assert.equal(map.get('g').length, map.get('b').length, 'ir tokio pat dydžio');
+});
+
+test('po nustatyto klaidų skaičiaus duomenys sunaikinami', async () => {
+  await fresh('4821');
+  await V.setWipeAfter(10);
+  assert.equal(await V.getWipeAfter(), 10);
+
+  V.lock();
+  let now = 2_000_000, destroyed = false;
+  for (let i = 0; i < 10; i++) {
+    now += 60 * 60_000;                       // peršokam delsą
+    const r = await V.unlock('0000', now);
+    if (r.destroyed) destroyed = true;
+  }
+  assert.equal(destroyed, true, 'dešimta klaida turi sunaikinti');
+  now += 60 * 60_000;
+  assert.equal((await V.unlock('4821', now)).ok, false, 'duomenų nebėra');
+});
+
+test('sunaikinimas išjungtas pagal nutylėjimą', async () => {
+  await fresh('4821');
+  assert.equal(await V.getWipeAfter(), 0);
+  V.lock();
+  let now = 3_000_000;
+  for (let i = 0; i < 20; i++) { now += 60 * 60_000; await V.unlock('0000', now); }
+  now += 60 * 60_000;
+  assert.equal((await V.unlock('4821', now)).ok, true, 'be įjungto nustatymo duomenys lieka');
+});
+
+test('sunaikinimo riba negali būti absurdiškai maža', async () => {
+  await fresh('4821');
+  await V.setWipeAfter(1);
+  assert.ok(await V.getWipeAfter() >= 5, 'viena klaida negali ištrinti visko');
+  await V.setWipeAfter(0);
+  assert.equal(await V.getWipeAfter(), 0);
 });

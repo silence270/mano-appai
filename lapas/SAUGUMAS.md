@@ -35,13 +35,42 @@ Kiekvienas raktų kelias diske užima **fiksuotus 60 baitų**, ir visi trys yra
 visada. Nenaudotoje vietoje guli atsitiktiniai baitai, todėl iš disko neįmanoma
 pasakyti, ar Face ID įjungtas ar atkūrimo kodas apskritai egzistuoja.
 
-**KDF:** PBKDF2-SHA256, 310 000 iteracijų (OWASP 2023), 16 baitų druska.
+**KDF:** Argon2id — 64 MB atminties, 3 iteracijos, 16 baitų druska.
+
+Argon2id pasirinktas ne dėl mados. PBKDF2 skaičiuoja tik SHA, o vaizdo plokštė
+tokių skaičiavimų daro tūkstančius lygiagrečiai. Argon2id kiekvienam spėjimui
+reikalauja 64 MB atminties — plokštė su 24 GB gali laikyti vos kelis šimtus,
+tad jos pranašumas krinta nuo maždaug 3000× iki dešimčių kartų.
+
+Senesne schema (PBKDF2) užrakintos saugyklos atrakinamos ir tyliai perkoduojamos
+per pirmą sėkmingą atrakinimą.
 **Šifras:** AES-GCM-256, 12 baitų IV, naujas kiekvienam įrašymui.
 
-## Du skyriai
+## Slaptažodžio frazė
 
-Skyriai yra **du ir vienodi**: po 256 KB, fiksuoto dydžio, abu atrodo kaip
-atsitiktiniai baitai. Vieną atrakina PIN, kitą — tas pats PIN atvirkščiai.
+Šeši žodžiai iš EFF sąrašo (1295 trumpi anglų žodžiai) = **62 bitai**. Žodžiai
+angliški sąmoningai: jų neverčiama, tik nurašoma, todėl tinka bet kurios kalbos
+vartotojai, o sąrašas parinktas taip, kad žodžiai nesipainiotų perrašant.
+
+Kuriant frazę prašoma ją perrašyti — kitaip pusė vartotojų jos neišsisaugotų.
+
+## Trys skyriai
+
+Skyriai yra **trys ir vienodi**: po 256 KB, fiksuoto dydžio, visi atrodo kaip
+atsitiktiniai baitai.
+
+| Skyrius | Atrakina | Kas nutinka |
+|---|---|---|
+| tikrasis | PIN / frazė, atkūrimo kodas, Face ID | įprastas darbas |
+| paslėptasis | tas pats PIN atvirkščiai | tuščias app'as, atrodantis kaip ką tik įdiegtas |
+| sunaikinimo | atskiras „duress" kodas | app'as atsidaro tuščias, **o tikrieji duomenys tuo metu perrašomi triukšmu** |
+
+Visi trys egzistuoja nuo pirmo paleidimo. Jei sunaikinimo skyrius atsirastų
+vėliau, pats jo atsiradimas pasakytų, kad toks kodas nustatytas.
+
+Papildomai galima įjungti **sunaikinimą po N nepavykusių bandymų** (10, 15 ar 25).
+Pagal nutylėjimą išjungta: tai apsauga nuo spėliojimo, bet ja gali pasinaudoti ir
+tas, kuris nori, kad tavo duomenų nebeliktų.
 
 Dydis fiksuotas sąmoningai. Jei tikrasis skyrius augtų, tektų perdydinti ir
 paslėptąjį — o jo rakto neturime, kol jis neatrakintas. Taip pat elgiasi
@@ -99,9 +128,20 @@ duomenų app'as netrina ir savininkės nuo jų neatkerta.
 - **Neapsaugo nuo žvilgsnio per petį** — nei įvedant PIN, nei naudojant.
 - **Jei kas nors žino PIN, jis mato viską.** Priverstinis atskleidimas sprendžiamas
   tik paslėptu skyriumi, o ir tas turi aukščiau aprašytą trūkumą.
-- **4 skaitmenų PIN yra 10 000 variantų.** Delsa daro spėliojimą nepraktišką
-  telefone, bet ne tada, kai saugykla nukopijuojama ir spėliojama atskirai —
-  ten gina tik PBKDF2 kaina. Ilgesnis PIN gerokai stipresnis.
+- **Trumpas PIN lieka trumpu PIN.** Šifras čia niekuo dėtas — tiesiog variantų
+  mažai. Išmatuota su Argon2id ir viena vaizdo plokšte:
+
+  | Slaptažodis | Kiek užtruktų perrinkti |
+  |---|---|
+  | 4 skaitmenys | 28 sekundės |
+  | 6 skaitmenys | 47 minutės |
+  | 8 skaitmenys | 3 dienos |
+  | **6 žodžių frazė** | **414 mln. metų** |
+
+  Todėl app'as pirmiausia siūlo frazę, PIN minimumas pakeltas iki šešių, o
+  kuriant matyti, kiek tas kodas realiai atlaiko. Delsa telefone spėliojimą
+  daro nepraktišką bet kuriuo atveju — lentelė galioja tik tada, kai saugykla
+  nukopijuojama ir atakuojama atskirai.
 - **Atsarginė kopija saugi tiek, kiek vieta, kur ją padėsi.**
 - **Ekrano nuotraukų PWA blokuoti negali.**
 - **Duomenų atkūrimo nėra**, jei pamesti ir PIN, ir atkūrimo kodas, ir kopija.

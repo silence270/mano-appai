@@ -102,6 +102,8 @@ export function renderSettings(ctx) {
             : ctx.bio.available ? t('bio_disabled') : t('bio_unsupported'), 'data-act="bio"')}
         ${item('🔑', t('rec_new'), t('rec_new_note'), '', 'data-act="rec"')}
         ${ctx.isDecoy ? '' : item('🫥', t('panic_title'), '', '', 'data-act="panic"')}
+        ${item('💣', t('wipe_title'), '', ctx.wipeAfter ? t('wipe_after', { n: ctx.wipeAfter }) : t('wipe_off'), 'data-act="wipeafter"')}
+        ${ctx.isDecoy ? '' : item('🕳', t('duress_title'), '', '', 'data-act="duress"')}
         ${item('🚪', t('autolock_title'), t('autolock_note'), '', 'data-act="locknow"')}
       </div>
       <div class="note">
@@ -182,6 +184,8 @@ export function renderSettings(ctx) {
     if (act === 'rec') recoverySheet(ctx);
     if (act === 'panic') panicSheet(ctx);
     if (act === 'locknow') ctx.onLockNow();
+    if (act === 'wipeafter') wipeAfterSheet(ctx);
+    if (act === 'duress') duressSheet(ctx);
     if (act === 'persist') {
       const ok = await DB.requestPersistence();
       toast(ok ? t('set_persist_on') : t('set_persist_off'));
@@ -393,6 +397,58 @@ function recoverySheet(ctx) {
     if (!code) { toast(t('rec_wrong_pin')); return; }
     s.close(true);
     showRecoveryCode(code);
+  };
+}
+
+/** Sunaikinimas po nepavykusių bandymų. */
+function wipeAfterSheet(ctx) {
+  const s = sheet({ title: t('wipe_title') });
+  const cur = ctx.wipeAfter || 0;
+  s.body.innerHTML = `
+    <div class="note warn">${esc(t('wipe_note'))}</div>
+    <div class="picks" style="margin-top:14px">
+      ${[0, 10, 15, 25].map(n => `<button class="pick" data-n="${n}" aria-pressed="${cur === n}">
+        <span class="mark"></span><span class="txt"><b>${esc(n ? t('wipe_after', { n }) : t('wipe_off'))}</b></span>
+      </button>`).join('')}
+    </div>`;
+  s.body.addEventListener('click', async e => {
+    const b = e.target.closest('[data-n]');
+    if (!b) return;
+    tap();
+    await V.setWipeAfter(+b.dataset.n);
+    s.close();
+    ctx.rerender();
+  });
+}
+
+/** Kodas, kuris ištrina. Reikia PIN — kad negalėtų nustatyti kas nors kitas. */
+function duressSheet(ctx) {
+  const s = sheet({ title: t('duress_title') });
+  s.body.innerHTML = `
+    <div class="note warn">${esc(t('duress_note'))}</div>
+    <div class="field" style="margin-top:14px"><label>${esc(t('bio_need_pin'))}</label>
+      <input type="password" id="d-cur" autocomplete="current-password"></div>
+    <div class="field"><label>${esc(t('duress_set'))}</label>
+      <input type="password" id="d-new" inputmode="numeric" autocomplete="new-password"></div>
+    <div style="margin:18px 0 8px;display:flex;flex-direction:column;gap:8px">
+      <button class="btn block" id="d-go">${esc(t('save'))}</button>
+      <button class="btn block ghost" id="d-clear">${esc(t('duress_clear'))}</button>
+    </div>`;
+
+  $('#d-go', s.body).onclick = async () => {
+    const cur = $('#d-cur', s.body).value, next = $('#d-new', s.body).value;
+    if (next.length < 4) { toast(t('lock_min')); return; }
+    if (V.normalisePhrase(next) === V.normalisePhrase(cur)) { toast(t('duress_same')); return; }
+    const check = await DB.unlock(cur);
+    if (!check.ok || check.decoy) { toast(t('lock_wrong')); return; }
+    await V.setDuressCode(next, { days: {}, settings: { lang: ctx.settings.lang } });
+    toast(t('duress_done'));
+    s.close();
+  };
+  $('#d-clear', s.body).onclick = async () => {
+    await V.clearDuressCode();
+    toast(t('duress_cleared'));
+    s.close();
   };
 }
 

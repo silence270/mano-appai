@@ -10,10 +10,14 @@
   app'as fiziškai negali nusiųsti duomenų niekur, net jei kas nors į jį
   įterptų kodą. default-src 'none' reiškia, kad viskas, kas neišvardyta,
   uždrausta pagal nutylėjimą.
+
+  'wasm-unsafe-eval' reikalingas Argon2 bibliotekai: WebAssembly be jo
+  neveikia. Skirtingai nei 'unsafe-eval', jis leidžia tik WASM kompiliavimą,
+  bet ne eval() ar naujų JS eilučių vykdymą.
 -->
 <meta http-equiv="Content-Security-Policy" content="
   default-src 'none';
-  script-src 'self';
+  script-src 'self' 'wasm-unsafe-eval';
   style-src 'self' 'unsafe-inline';
   img-src 'self' data: blob:;
   media-src 'self' blob:;

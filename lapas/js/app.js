@@ -33,6 +33,7 @@ const app = {
   state: null,
   storage: { usage: null, persisted: false },
   bio: { available: false, enabled: false },
+  wipeAfter: 0,
 };
 
 // ------------------------------------------------------------------- tema
@@ -52,6 +53,7 @@ function applyTheme(theme) {
 async function reload() {
   app.days = await DB.getDays();
   app.settings = await DB.getSettings();
+  app.wipeAfter = await import('./vault.js').then(V => V.getWipeAfter()).catch(() => 0);
   app.bio = {
     available: await DB.biometricsAvailable().catch(() => false),
     enabled: await DB.biometricsEnabled().catch(() => false),
@@ -159,6 +161,7 @@ function render() {
     storage: app.storage,
     bio: app.bio,
     isDecoy: DB.isDecoy(),
+    wipeAfter: app.wipeAfter,
     autoLang: detectLang(),
     entry: app.days[app.state.today],
     needsBackup: needsBackup(),

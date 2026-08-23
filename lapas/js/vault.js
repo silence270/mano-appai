@@ -37,10 +37,22 @@ const VERSION = 1;
 
 const K_SALT = 'a';
 const K_S0 = 'b';
-const K_S1 = 'c';
+const K_S1 = 'c';                 // panikos skyrius (PIN atvirkščiai)
+const K_S2 = 'g';                 // „sunaikinimo" skyrius: atrakinus duomenys dingsta
 const K_GUARD = 'd';
 
-const ITER = 310_000;             // OWASP 2023 PBKDF2-SHA256
+const ITER = 310_000;             // senoji schema (PBKDF2), paliekama tik atrakinti
+
+/**
+ * Argon2id parametrai. Skiriasi nuo PBKDF2 tuo, kad reikalauja ATMINTIES:
+ * 64 MB kiekvienam spėjimui. Vaizdo plokštė gali skaičiuoti tūkstančius SHA
+ * lygiagrečiai, bet ne tūkstančius po 64 MB — todėl jos pranašumas krinta
+ * nuo maždaug 3000× iki dešimčių kartų.
+ */
+const ARGON = { memorySize: 65536, iterations: 3, parallelism: 1, hashLength: 32 };
+const KDF_ARGON = 2;
+const KDF_PBKDF2 = 1;
+const K_KDF = 'f';                // kuria schema užrakinta ši saugykla
 /**
  * Skyriaus dydis fiksuotas ir niekada nesikeičia. Kitaip augantis tikrasis
  * skyrius verstų perdydinti panikos skyrių — o jo rakto neturime, kol jis
@@ -103,12 +115,47 @@ export function randomBytes(n) {
 }
 function err(code) { const e = new Error(code); e.code = code; return e; }
 
-async function kekFrom(secret, salt) {
-  const base = await crypto.subtle.importKey('raw', enc.encode(secret), 'PBKDF2', false, ['deriveKey']);
-  return crypto.subtle.deriveKey(
-    { name: 'PBKDF2', salt, iterations: ITER, hash: 'SHA-256' },
-    base, { name: 'AES-GCM', length: 256 }, false, ['wrapKey', 'unwrapKey']);
+/** Argon2id biblioteka įkeliama tik prireikus — ji sveria 29 KB. */
+let _argon = null;
+async function argon2() {
+  if (_argon) return _argon;
+  if (typeof window !== 'undefined') {
+    if (!window.hashwasm?.argon2id) {
+      await new Promise((res, rej) => {
+        const sc = document.createElement('script');
+        sc.src = new URL('../lib/hash-wasm.js', import.meta.url).href;
+        sc.onload = res; sc.onerror = () => rej(err('KDF_LOAD'));
+        document.head.append(sc);
+      });
+    }
+    _argon = window.hashwasm;
+  } else {
+    // node (testai): ta pati UMD biblioteka, tik įkeliama rankomis
+    const { readFileSync } = await import('node:fs');
+    const src = readFileSync(new URL('../lib/hash-wasm.js', import.meta.url), 'utf8');
+    const mod = { exports: {} };
+    new Function('module', 'exports', src)(mod, mod.exports);
+    _argon = mod.exports;
+  }
+  return _argon;
 }
+
+/** Raktas iš slaptažodžio. `scheme` leidžia atrakinti ir senesne schema užrakintus. */
+async function kekFrom(secret, salt, scheme = KDF_ARGON) {
+  if (scheme === KDF_PBKDF2) {
+    const base = await crypto.subtle.importKey('raw', enc.encode(secret), 'PBKDF2', false, ['deriveKey']);
+    return crypto.subtle.deriveKey(
+      { name: 'PBKDF2', salt, iterations: ITER, hash: 'SHA-256' },
+      base, { name: 'AES-GCM', length: 256 }, false, ['wrapKey', 'unwrapKey']);
+  }
+  const a = await argon2();
+  const raw = await a.argon2id({ password: secret, salt, ...ARGON, outputType: 'binary' });
+  return crypto.subtle.importKey('raw', raw, { name: 'AES-GCM', length: 256 },
+    false, ['wrapKey', 'unwrapKey']);
+}
+
+/** Kokia schema užrakinta ši saugykla. */
+const kdfScheme = async () => (await get(K_KDF)) || KDF_PBKDF2;
 
 const newDek = () =>
   crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, true, ['encrypt', 'decrypt']);
@@ -136,8 +183,7 @@ async function unwrapDek(blob, kek, extractable = false) {
 /** Atrakina DEK perrakinimui — reikalauja slaptažodžio, net jei app'as atrakintas. */
 async function dekForRewrap(secret) {
   const salt = unb64(await get(K_SALT));
-  const looksLikeCode = normaliseCode(secret).length >= 20;
-  const kek = await kekFrom(looksLikeCode ? normaliseCode(secret) : secret, salt);
+  const kek = await kekFrom(normalisePhrase(secret), salt, await kdfScheme());
   const blob = await get(_slot);
   for (let i = 0; i < 2; i++) {
     try {
@@ -228,10 +274,95 @@ async function noteFail(now) {
   const d = delayFor(g.fails);
   g.until = d ? now + d : 0;
   await put(K_GUARD, g);
+
+  // Jei įjungtas sunaikinimas, po nustatyto klaidų skaičiaus duomenys dingsta.
+  if (g.wipeAfter && g.fails >= g.wipeAfter) {
+    await destroyRealData();
+    return { fails: g.fails, waitMs: d, destroyed: true };
+  }
   return { fails: g.fails, waitMs: d };
 }
 
+/**
+ * Sunaikina tikruosius duomenis, palikdamas saugyklą veikiančią.
+ * Skyrius kelis kartus perrašomas triukšmu, tad net turint slaptažodį
+ * nebėra ko iššifruoti.
+ */
+async function destroyRealData() {
+  const size = (await get(K_S0))?.length || SLOT_BYTES + HEAD + 28;
+  for (let pass = 0; pass < 3; pass++) await put(K_S0, randomBytes(size));
+  lock();
+}
+
+/** Ar įjungtas sunaikinimas po klaidų ir po kelintos. */
+export async function getWipeAfter() {
+  return (await get(K_GUARD))?.wipeAfter || 0;
+}
+
+export async function setWipeAfter(n) {
+  const g = (await get(K_GUARD)) || { fails: 0, until: 0 };
+  g.wipeAfter = n > 0 ? Math.max(5, Math.min(50, Math.round(n))) : 0;
+  await put(K_GUARD, g);
+}
+
 const clearFails = () => put(K_GUARD, { fails: 0, until: 0 });
+
+// ------------------------------------------------- slaptažodžio frazė
+
+/**
+ * Frazė iš šešių trumpų anglų žodžių — 62 bitai. Žodžiai angliški sąmoningai:
+ * jų neverčiama, tik nurašoma, todėl tinka bet kurios kalbos vartotojai, o
+ * sąrašas (EFF) parinktas taip, kad žodžiai nesipainiotų perrašant.
+ *
+ * Kodėl frazė, o ne PIN: keturi skaitmenys yra 10 000 variantų, ir vaizdo
+ * plokštė juos perrenka per sekundės dalį, kad ir koks būtų šifras. Šešių
+ * žodžių frazė su Argon2id — milijonai metų.
+ */
+export async function makePassphrase(words = 6) {
+  const { WORDS } = await import('../lib/wordlist.js');
+  const out = [];
+  // atmetimo metodas, kad žodžiai pasiskirstytų tolygiai
+  const max = Math.floor(65536 / WORDS.length) * WORDS.length;
+  while (out.length < words) {
+    const buf = new Uint16Array(words * 2);
+    crypto.getRandomValues(buf);
+    for (const n of buf) {
+      if (n >= max) continue;
+      out.push(WORDS[n % WORDS.length]);
+      if (out.length === words) break;
+    }
+  }
+  return out.join('-');
+}
+
+/**
+ * Vienintelis normalizatorius VISIEMS slaptažodžiams — ir frazei, ir atkūrimo
+ * kodui, ir PIN. Anksčiau jų buvo du, ir frazė „sling-scuff-music…" buvo
+ * palaikoma kodu (ilga, be tarpų), tad užrakinta viena forma, o atrakinama kita.
+ *
+ * Kodo atveju papildomai taisomi perrašant painiojami simboliai (Crockford):
+ * i ir l → 1, o → 0, u → v.
+ */
+export function normalisePhrase(s) {
+  const t = String(s || '').toLowerCase().trim().replace(/[\s\-_.]+/g, '-');
+  const bare = t.replace(/-/g, '');
+  const looksLikeCode = bare.length === 24 && /^[0-9a-z]+$/.test(bare) && !/[aeiou]{2}/.test(bare);
+  if (!looksLikeCode) return t;
+  return bare.replace(/[il]/g, '1').replace(/o/g, '0').replace(/u/g, 'v');
+}
+
+/** Kiek variantų turi toks slaptažodis — vartotojai rodoma paprastais žodžiais. */
+export function strengthOf(secret) {
+  const p = normalisePhrase(secret);
+  const words = p.split('-').filter(Boolean);
+  if (words.length >= 4 && words.every(w => /^[a-z]{3,6}$/.test(w))) {
+    return { bits: Math.round(words.length * 10.34), kind: 'phrase' };
+  }
+  if (/^\d+$/.test(secret)) return { bits: Math.round(secret.length * 3.32), kind: 'digits' };
+  const classes = (/[a-z]/.test(secret) ? 26 : 0) + (/[A-Z]/.test(secret) ? 26 : 0) +
+                  (/\d/.test(secret) ? 10 : 0) + (/[^a-zA-Z0-9]/.test(secret) ? 30 : 0);
+  return { bits: Math.round(secret.length * Math.log2(Math.max(classes, 2))), kind: 'mixed' };
+}
 
 // ------------------------------------------------------- atkūrimo kodas
 
@@ -249,7 +380,7 @@ export function makeRecoveryCode() {
   return out.match(/.{1,4}/g).join('-');
 }
 
-/** Įvedant nesvarbu didžiosios ar mažosios, brūkšneliai ar tarpai. */
+/** Tik kodo išvaizdai tikrinti (testams). Raktų kelyje naudojamas normalisePhrase. */
 export function normaliseCode(s) {
   return String(s || '').toUpperCase().replace(/[^0-9A-Z]/g, '')
     .replace(/I/g, '1').replace(/L/g, '1').replace(/O/g, '0').replace(/U/g, 'V');
@@ -274,12 +405,13 @@ export async function initialise(pin, seed = { days: {}, settings: {} }) {
   const dek = await newDek();
   const code = makeRecoveryCode();
 
-  const kekPin = await kekFrom(pin, salt);
-  const kekRec = await kekFrom(normaliseCode(code), salt);
+  const kekPin = await kekFrom(normalisePhrase(pin), salt);
+  const kekRec = await kekFrom(normalisePhrase(code), salt);
   const body = await sealBody(dek, seed);
   const slot = packSlot([await wrapDek(dek, kekPin), await wrapDek(dek, kekRec)], body);
 
   await put(K_SALT, b64(salt));
+  await put(K_KDF, KDF_ARGON);
   await put(K_S0, slot);
   await clearFails();
 
@@ -288,12 +420,15 @@ export async function initialise(pin, seed = { days: {}, settings: {} }) {
   const rev = reversePin(pin);
   if (rev) {
     const dek2 = await newDek();
-    const kek2 = await kekFrom(rev, salt);
+    const kek2 = await kekFrom(normalisePhrase(rev), salt);
     const body2 = await sealBody(dek2, { days: {}, settings: { lang: seed.settings?.lang || 'lt' } });
     await put(K_S1, packSlot([await wrapDek(dek2, kek2)], body2));
   } else {
     await put(K_S1, randomBytes(slot.length));
   }
+  // Trečias skyrius egzistuoja nuo pat pradžių: jei atsirastų vėliau, tai
+  // pasakytų, kad sunaikinimo kodas buvo nustatytas.
+  await put(K_S2, randomBytes(slot.length));
 
   _dek = dek; _slot = K_S0; _decoy = false;
   return code;
@@ -314,23 +449,49 @@ export async function unlock(secret, now = Date.now()) {
   const saltB64 = await get(K_SALT);
   if (!saltB64) return { ok: false, fails: 0 };
 
-  const looksLikeCode = normaliseCode(secret).length >= 20;
-  const kek = await kekFrom(looksLikeCode ? normaliseCode(secret) : secret, unb64(saltB64));
+  const asTyped = normalisePhrase(secret);
+  const scheme = await kdfScheme();
+  const kek = await kekFrom(asTyped, unb64(saltB64), scheme);
 
-  for (const slotKey of [K_S0, K_S1]) {
+  for (const slotKey of [K_S0, K_S1, K_S2]) {
     const blob = await get(slotKey);
     if (!blob || blob.length <= HEAD) continue;
     for (let i = 0; i < SLOTS; i++) {
       try {
         const dek = await unwrapDek(blob.subarray(i * WRAP, (i + 1) * WRAP), kek);
         await openBody(dek, blob.subarray(HEAD));      // patikrinam, kad tikrai atsidaro
-        _dek = dek; _slot = slotKey; _decoy = slotKey === K_S1;
         await clearFails();
+
+        // Sunaikinimo kodas: app'as atsidaro tuščias, o tikrieji duomenys tuo
+        // metu tyliai dingsta. Naudinga, kai atrakinti verčia jėga.
+        if (slotKey === K_S2) {
+          await destroyRealData();
+          _dek = dek; _slot = K_S2; _decoy = true;
+          return { ok: true, decoy: true, destroyed: true };
+        }
+
+        _dek = dek; _slot = slotKey; _decoy = slotKey === K_S1;
+        // Senesne schema užrakinta saugykla tyliai perkoduojama į Argon2id.
+        if (scheme !== KDF_ARGON) upgradeKdf(asTyped, i).catch(() => {});
         return { ok: true, decoy: _decoy, viaRecovery: i === 1, viaBiometric: i === 2 };
       } catch { /* ne šis raktas */ }
     }
   }
   return { ok: false, ...(await noteFail(now)) };
+}
+
+/** Perrakina DEK nauja schema, nekeisdamas nei slaptažodžio, nei duomenų. */
+async function upgradeKdf(secret, index) {
+  const salt = unb64(await get(K_SALT));
+  const oldKek = await kekFrom(secret, salt, KDF_PBKDF2);
+  const blob = await get(_slot);
+  const dek = await unwrapDek(blob.subarray(index * WRAP, (index + 1) * WRAP), oldKek, true);
+  const newKek = await kekFrom(secret, salt, KDF_ARGON);
+  const out = new Uint8Array(blob.length);
+  out.set(blob, 0);
+  out.set(await wrapDek(dek, newKek), index * WRAP);
+  await put(_slot, out);
+  await put(K_KDF, KDF_ARGON);
 }
 
 async function readSlot() {
@@ -354,6 +515,26 @@ export const readAll = () => readSlot();
 export const writeAll = data => writeSlot(data);
 
 /**
+ * Sunaikinimo kodas („duress code" — kaip seifuose). Atrodo kaip paprastas
+ * atrakinimas: app'as atsidaro tuščias. Bet tuo metu tikrieji duomenys
+ * perrašomi triukšmu ir dingsta negrįžtamai.
+ */
+export async function setDuressCode(code, seed = { days: {}, settings: {} }) {
+  if (!_dek || _decoy) throw err('LOCKED');
+  const salt = unb64(await get(K_SALT));
+  const dek = await newDek();
+  const kek = await kekFrom(normalisePhrase(code), salt, await kdfScheme());
+  const body = await sealBody(dek, seed);
+  await put(K_S2, packSlot([await wrapDek(dek, kek)], body));
+}
+
+/** Sunaikinimo kodo panaikinimas — vieta lieka, bet raktas dingsta. */
+export async function clearDuressCode() {
+  const size = (await get(K_S0))?.length || SLOT_BYTES + HEAD + 28;
+  await put(K_S2, randomBytes(size));
+}
+
+/**
  * Panikos PIN. Numatytai jis yra pagrindinis PIN atvirkščiai — taip nereikia
  * atsiminti dviejų. Kaina, kurią verta žinoti: kas matė, kaip įvedi PIN, gali
  * jį apversti ir pamatyti tikruosius duomenis. Todėl čia galima nustatyti
@@ -363,7 +544,7 @@ export async function setDecoyPin(pin, seed = { days: {}, settings: {} }) {
   if (!_dek || _decoy) throw err('LOCKED');
   const salt = unb64(await get(K_SALT));
   const dek = await newDek();
-  const kek = await kekFrom(pin, salt);
+  const kek = await kekFrom(normalisePhrase(pin), salt, await kdfScheme());
   const real = await get(K_S0);
   const body = await sealBody(dek, seed);
   await put(K_S1, packSlot([await wrapDek(dek, kek)], body));
@@ -375,7 +556,7 @@ export async function changePin(oldSecret, newPin) {
   if (!check.ok) return false;
   const found = await dekForRewrap(oldSecret);
   if (!found) return false;
-  const kek = await kekFrom(newPin, found.salt);
+  const kek = await kekFrom(normalisePhrase(newPin), found.salt, await kdfScheme());
   const out = new Uint8Array(found.blob.length);
   out.set(await wrapDek(found.dek, kek), 0);
   out.set(found.blob.subarray(WRAP), WRAP);
@@ -394,7 +575,7 @@ export async function resetRecoveryCode(pin) {
   const found = await dekForRewrap(pin);
   if (!found) return null;
   const code = makeRecoveryCode();
-  const kek = await kekFrom(normaliseCode(code), found.salt);
+  const kek = await kekFrom(normalisePhrase(code), found.salt, await kdfScheme());
   const out = new Uint8Array(found.blob.length);
   out.set(found.blob.subarray(0, WRAP), 0);
   out.set(await wrapDek(found.dek, kek), WRAP);
@@ -412,7 +593,7 @@ export async function wipe() {
   lock();
   try {
     for (let pass = 0; pass < 3; pass++) {
-      for (const k of [K_S0, K_S1]) {
+      for (const k of [K_S0, K_S1, K_S2]) {
         const cur = await get(k);
         await put(k, randomBytes(cur?.length || SLOT_BYTES));
       }
@@ -559,7 +740,7 @@ export async function enableBiometrics(pin) {
   if (!res) return { ok: false, reason: 'CANCELLED' };
   if (!res.secret) return { ok: false, reason: 'NO_PRF' };   // naršyklė PRF nepalaiko
 
-  const kek = await kekFrom(b64(res.secret), found.salt);
+  const kek = await kekFrom(b64(res.secret), found.salt, await kdfScheme());
   const blob = await get(_slot);
   const out = new Uint8Array(blob.length);
   out.set(blob.subarray(0, WRAP * 2), 0);
@@ -594,7 +775,7 @@ export async function unlockBiometric(now = Date.now()) {
   if (!res?.secret) return { ok: false, reason: 'CANCELLED' };
 
   const saltB64 = await get(K_SALT);
-  const kek = await kekFrom(b64(res.secret), unb64(saltB64));
+  const kek = await kekFrom(b64(res.secret), unb64(saltB64), await kdfScheme());
   for (const slotKey of [K_S0, K_S1]) {
     const blob = await get(slotKey);
     if (!blob || blob.length <= HEAD) continue;

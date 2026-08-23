@@ -11,7 +11,7 @@ import { t } from '../i18n.js';
 import * as DB from '../db.js';
 import * as V from '../vault.js';
 
-const MIN_PIN = 4;
+const MIN_PIN = 6;      // keturi skaitmenys perrenkami net su Argon2id
 
 function keypad(extra = '') {
   return `<div class="keypad">
@@ -34,23 +34,127 @@ function fmtWait(ms) {
 
 // ------------------------------------------------------- PIN kūrimas
 
+/** Kiek laiko užtruktų perrinkti — žmogaus kalba, ne bitais. */
+function crackTime(bits) {
+  const perTry = 0.113 / 40;                 // Argon2id 64 MB, vaizdo plokštė
+  const sec = Math.pow(2, bits) * perTry / 2;
+  if (sec < 60) return t('crack_instant');
+  if (sec < 86400) return t('crack_minutes');
+  if (sec < 3.15e7) return t('crack_days');
+  if (sec < 3.15e14) return t('crack_years');
+  return t('crack_forever');
+}
+
+function strengthLabel(bits) {
+  return bits < 25 ? t('strength_weak') : bits < 45 ? t('strength_ok')
+       : bits < 60 ? t('strength_good') : t('strength_best');
+}
+
 /**
- * Pirmas paleidimas: PIN, jo pakartojimas ir atkūrimo kodas.
- * @param {(pin:string)=>Promise<string>} onCreate grąžina atkūrimo kodą
+ * Pirmas paleidimas. Pirmiausia klausiama, kuo užrakinti: frazė ar PIN.
+ * Frazė siūloma pirma sąmoningai — trumpą kodą perrinkti įmanoma, ir tai
+ * pasakoma tiesiai, o ne paslepiama.
  */
 export function showSetup(onCreate) {
+  const node = el(`<div class="lock" style="justify-content:center">
+    <div class="leaf">🍃</div>
+    <h2>${esc(t('setup_how'))}</h2>
+    <div class="picks" style="width:100%;max-width:340px;margin-top:8px">
+      <button class="pick" data-w="phrase"><span class="mark"></span>
+        <span class="txt"><b>${esc(t('setup_phrase'))} · ${esc(t('setup_phrase_best'))}</b>
+        <span>${esc(t('setup_phrase_note'))}</span></span></button>
+      <button class="pick" data-w="pin"><span class="mark"></span>
+        <span class="txt"><b>${esc(t('setup_pin'))}</b>
+        <span>${esc(t('setup_pin_note'))}</span></span></button>
+    </div>
+  </div>`);
+  document.body.append(node);
+
+  node.addEventListener('click', async e => {
+    const b = e.target.closest('[data-w]');
+    if (!b) return;
+    tap();
+    node.remove();
+    if (b.dataset.w === 'phrase') showPhraseSetup(onCreate);
+    else showPinSetup(onCreate);
+  });
+  return node;
+}
+
+/** Frazė: sugeneruojama, parodoma, tada prašoma perrašyti — kad tikrai išsaugotų. */
+async function showPhraseSetup(onCreate) {
+  let phrase = await V.makePassphrase();
+  const node = el(`<div class="lock" style="justify-content:flex-start;padding-top:calc(var(--safe-t) + 36px)">
+    <div class="leaf">🔑</div>
+    <h2>${esc(t('phrase_yours'))}</h2>
+    <p class="lock-why">${esc(t('phrase_write'))}</p>
+    <div class="rec-code" id="ph"></div>
+    <div class="row" style="width:100%;max-width:340px;gap:8px">
+      <button class="btn ghost sm" data-a="copy">${esc(t('rec_copy'))}</button>
+      <button class="btn ghost sm" data-a="again">${esc(t('phrase_new'))}</button>
+    </div>
+    <div class="field" style="width:100%;max-width:340px;margin-top:18px">
+      <label>${esc(t('phrase_confirm'))}</label>
+      <input id="ph-in" autocomplete="off" autocapitalize="none" spellcheck="false"
+             style="text-align:center;font-size:15px">
+    </div>
+    <div class="err" role="status"></div>
+    <button class="btn" style="min-width:220px" data-a="go">${esc(t('onb_start'))}</button>
+  </div>`);
+  document.body.append(node);
+
+  const paint = () => {
+    $('#ph', node).innerHTML = phrase.split('-').map(w => `<span>${esc(w)}</span>`).join('');
+  };
+  paint();
+
+  node.addEventListener('click', async e => {
+    const a = e.target.closest('[data-a]')?.dataset.a;
+    if (!a) return;
+    tap();
+    if (a === 'again') { phrase = await V.makePassphrase(); paint(); return; }
+    if (a === 'copy') {
+      try { await navigator.clipboard.writeText(phrase); toast(t('rec_copied')); } catch {}
+      return;
+    }
+    if (a === 'go') {
+      if (V.normalisePhrase($('#ph-in', node).value) !== V.normalisePhrase(phrase)) {
+        $('.err', node).textContent = t('phrase_wrong');
+        node.classList.add('shake');
+        setTimeout(() => node.classList.remove('shake'), 420);
+        return;
+      }
+      const code = await onCreate(phrase);
+      node.remove();
+      if (code) showRecoveryCode(code, () => document.dispatchEvent(new Event('lapas:setup-done')));
+      else document.dispatchEvent(new Event('lapas:setup-done'));
+    }
+  });
+  return node;
+}
+
+/** PIN — kaip anksčiau, tik minimumas šeši skaitmenys ir matomas stiprumas. */
+function showPinSetup(onCreate) {
   const node = el(`<div class="lock">
     <div class="leaf">🍃</div>
     <h2 id="lk-title">${esc(t('lock_welcome'))}</h2>
     <p class="lock-why" id="lk-why">${esc(t('lock_why'))}</p>
     <div class="dots"></div>
+    <div class="strength" id="lk-str"></div>
     <div class="err" role="status"></div>
     ${keypad()}
   </div>`);
   document.body.append(node);
 
   let first = null, pin = '';
-  const paint = () => { $('.dots', node).innerHTML = dots(pin.length); };
+  const paint = () => {
+    $('.dots', node).innerHTML = dots(pin.length);
+    const st = $('#lk-str', node);
+    if (!pin.length || first !== null) { st.textContent = ''; return; }
+    const { bits } = V.strengthOf(pin);
+    st.textContent = `${strengthLabel(bits)} · ${t('strength_crack', { n: crackTime(bits) })}`;
+    st.className = `strength ${bits < 25 ? 'weak' : bits < 45 ? 'ok' : 'good'}`;
+  };
   const fail = msg => {
     $('.err', node).textContent = msg;
     node.classList.add('shake');
@@ -69,7 +173,10 @@ export function showSetup(onCreate) {
     pin += b.dataset.k;
     paint();
 
-    if (pin.length < MIN_PIN) return;
+    if (pin.length < MIN_PIN) {
+      if (pin.length >= 4) $('.err', node).textContent = t('pin_min6');
+      return;
+    }
     // laukiam, ar ji ves daugiau skaitmenų; patvirtina ilgesnė pauzė arba 12 skaitmenų
     clearTimeout(node._t);
     node._t = setTimeout(async () => {
