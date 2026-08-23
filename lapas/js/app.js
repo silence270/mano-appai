@@ -226,6 +226,16 @@ if ('serviceWorker' in navigator) {
 }
 
 boot().catch(err => {
+  setLang(detectLang());          // nustatymai neužsikrovė, tad kalba — iš telefono
+  // Dažniausia priežastis — privatus naršymo režimas, kur IndexedDB uždaryta.
+  // Techninis pranešimas čia nieko nepasako, todėl sakoma, ką daryti.
+  const storageBroken = /indexeddb|database|quota|LOCKED|storage/i.test(err?.message || '');
+  const msg = storageBroken ? t('err_storage') : t('err_generic');
   document.getElementById('app').innerHTML =
-    `<div class="screen"><div class="empty"><span class="e">🍃</span>${err.message}</div></div>`;
+    `<div class="screen"><div class="empty" style="padding-top:80px">
+      <span class="e">🍃</span>
+      <div style="font-size:15px;color:var(--ink);font-weight:600;margin-bottom:8px">${msg}</div>
+      <div style="font-size:12px;opacity:.7">${(err?.message || '').slice(0, 120)}</div>
+    </div></div>`;
+  console.error(err);
 });

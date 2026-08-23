@@ -29,3 +29,42 @@ test('katalogo elementai turi abu vertimus ir unikalius id', () => {
     assert.ok(lt.trim() && en.trim(), `tuščias vertimas: ${id}`);
   }
 });
+
+test('perjungus kalbą tekstai iš tikrųjų keičiasi', async () => {
+  const { setLang, t, cycleCount, dayCount, formatRange, formatDate } = await import('../js/i18n.js');
+  setLang('lt');
+  const lt = t('nav_today');
+  assert.equal(cycleCount(1), '1 ciklą');
+  assert.equal(cycleCount(4), '4 ciklus');
+  assert.equal(cycleCount(11), '11 ciklų');
+  assert.equal(cycleCount(21), '21 ciklą');
+  assert.equal(dayCount(2), '2 dienos');
+  assert.equal(formatRange('2026-09-04', '2026-09-12'), 'rugsėjo 4–12 d.');
+  assert.equal(formatDate('2026-08-23'), 'rugpjūčio 23 d.');
+  setLang('en');
+  assert.notEqual(t('nav_today'), lt);
+  assert.equal(cycleCount(1), '1 cycle');
+  assert.equal(cycleCount(4), '4 cycles');
+  assert.equal(formatRange('2026-09-04', '2026-09-12'), '4–12 September');
+  setLang('lt');
+});
+
+test('klaidos pranešimas atskiria saugyklos problemą nuo bendros', async () => {
+  const { setLang, t } = await import('../js/i18n.js');
+  setLang('lt');
+  const route = m => /indexeddb|database|quota|LOCKED|storage/i.test(m) ? t('err_storage') : t('err_generic');
+  assert.match(route('Failed to open indexedDB'), /privačiame naršymo režime/);
+  assert.match(route('QuotaExceededError'), /privačiame naršymo režime/);
+  assert.match(route('netikėta klaida'), /uždaryti ir atidaryti/);
+});
+
+test('visi mėnesių kilmininkai teisingi (priebalsių kaita)', async () => {
+  const { setLang, formatDate } = await import('../js/i18n.js');
+  setLang('lt');
+  const want = ['sausio', 'vasario', 'kovo', 'balandžio', 'gegužės', 'birželio',
+                'liepos', 'rugpjūčio', 'rugsėjo', 'spalio', 'lapkričio', 'gruodžio'];
+  want.forEach((w, i) => {
+    const iso = `2026-${String(i + 1).padStart(2, '0')}-15`;
+    assert.equal(formatDate(iso), `${w} 15 d.`, `${i + 1} mėnuo`);
+  });
+});

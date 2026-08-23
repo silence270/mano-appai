@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="lt">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Lapas — QR grandinės patikra</title>
+<link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+<script>
+if (!['localhost', '127.0.0.1'].includes(location.hostname)) {
+  document.documentElement.innerHTML =
+    '<body style="font:16px -apple-system,sans-serif;padding:40px;text-align:center;background:#120e15;color:#a294a6">Kūrimo įrankis. Veikia tik localhost.</body>';
+  throw new Error('dev only');
+}
+</script>
+<div class="screen">
+  <div class="head"><h1>QR grandinės patikra</h1></div>
+  <div class="note">Sugeneruoja kadrus, nupiešia juos kaip tikrus QR kodus, nuskaito
+    atgal per jsQR ir palygina duomenis baitas į baitą. Patikrina viską, išskyrus fizinę kamerą.</div>
+  <div class="card" style="margin-top:16px">
+    <div class="picks">
+      <button class="pick" data-n="120"><span class="mark"></span><span class="txt"><b>Keturi mėnesiai</b><span>~120 dienų įrašų</span></span></button>
+      <button class="pick" data-n="400"><span class="mark"></span><span class="txt"><b>Metai su kaupu</b><span>~400 dienų įrašų</span></span></button>
+      <button class="pick" data-n="1100"><span class="mark"></span><span class="txt"><b>Treji metai</b><span>~1100 dienų įrašų</span></span></button>
+    </div>
+    <div class="note" id="out" style="margin-top:14px">—</div>
+    <canvas id="cv" width="640" height="640" class="qr-canvas" style="margin-top:12px;display:none"></canvas>
+  </div>
+</div>
+<script type="module">
+import * as T from '../js/transfer.js';
+import * as C from '../js/cycle.js';
+
+const out = document.getElementById('out');
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d', { willReadFrequently: true });
+
+function makeDays(n) {
+  const days = {};
+  for (let i = 0; i < n; i++) {
+    const d = C.addDays(C.addDays(C.todayISO(), -n), i);
+    if (i % 28 < 5) days[d] = { flow: i % 28 === 0 ? 3 : 4, symptoms: ['cramps', 'backache'], mood: ['sensitive'] };
+    else if (i % 3 === 0) days[d] = { bbt: 36.4 + (i % 7) * 0.04, mood: ['calm'],
+                                      notes: i % 30 === 0 ? 'Užrašas su ąčęėįšųūž ir emoji 🍃' : '' };
+  }
+  return days;
+}
+
+function drawFrame(text) {
+  const qr = window.qrcode(0, 'M');
+  qr.addData(text, 'Byte'); qr.make();
+  const n = qr.getModuleCount(), px = Math.floor(cv.width / (n + 4));
+  ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, cv.width, cv.height);
+  ctx.fillStyle = '#000';
+  const off = Math.floor((cv.width - px * (n + 4)) / 2) + px * 2;
+  for (let r = 0; r < n; r++) for (let c = 0; c < n; c++)
+    if (qr.isDark(r, c)) ctx.fillRect(off + c * px, off + r * px, px, px);
+  return (qr.getModuleCount() - 17) / 4;
+}
+
+document.body.addEventListener('click', async e => {
+  const b = e.target.closest('[data-n]');
+  if (!b) return;
+  out.textContent = 'Skaičiuojama…';
+  cv.style.display = 'block';
+  await T.loadScript('../lib/qrcode-generator.js');
+  await T.loadScript('../lib/jsqr.js');
+
+  const days = makeDays(+b.dataset.n);
+  const settings = { lang: 'lt', birthYear: 1993, avgCycle: 29, mode: 'ttc' };
+  const code = T.transferCode();
+  const t0 = performance.now();
+  const frames = await T.buildFrames(T.buildPayload(days, settings), code);
+
+  const col = T.createCollector();
+  let version = 0, unread = 0;
+  for (const f of frames) {
+    version = Math.max(version, drawFrame(f));
+    const img = ctx.getImageData(0, 0, cv.width, cv.height);
+    const hit = window.jsQR(img.data, cv.width, cv.height, { inversionAttempts: 'dontInvert' });
+    if (!hit) { unread++; continue; }
+    col.feed(hit.data);
+  }
+  let verdict;
+  try {
+    const back = await col.assemble(code);
+    const same = JSON.stringify(back.days) === JSON.stringify(days);
+    verdict = same && back.settings.birthYear === 1993
+      ? `✓ ${Object.keys(days).length} dienų · ${frames.length} kadrų · QR versija ${version} · `
+        + `${((frames.length * 0.13)).toFixed(1)} s perdavimas · duomenys sutampa baitas į baitą`
+      : '✗ duomenys nesutampa!';
+  } catch (err) {
+    verdict = '✗ ' + (err.code || err.message);
+  }
+  out.textContent = `${verdict}${unread ? ` · nenuskaityta kadrų: ${unread}` : ''} · ${Math.round(performance.now() - t0)} ms`;
+});
+</script>
+</body>
+</html>

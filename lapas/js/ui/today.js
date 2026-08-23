@@ -25,11 +25,15 @@ function ring(state) {
   const day = state.dayOfCycle;
   const period = state.avgPeriod;
 
-  let ovDay = null, fertFrom = null, fertTo = null;
+  let ovDay = null, fertFrom = null, fertTo = null, wideFrom = null, wideTo = null;
   if (state.ovulation && state.cycleStart) {
     ovDay = C.daysBetween(state.cycleStart, state.ovulation.date) + 1;
-    fertFrom = C.daysBetween(state.cycleStart, state.fertile.from) + 1;
-    fertTo = C.daysBetween(state.cycleStart, state.fertile.to) + 1;
+    // Žiede, kaip ir kalendoriuje, ryškiai žymimas tik siaurasis langas;
+    // platusis (neapibrėžtumo) — blankiu atspalviu.
+    fertFrom = C.daysBetween(state.cycleStart, state.fertile.core.from) + 1;
+    fertTo = C.daysBetween(state.cycleStart, state.fertile.core.to) + 1;
+    wideFrom = C.daysBetween(state.cycleStart, state.fertile.from) + 1;
+    wideTo = C.daysBetween(state.cycleStart, state.fertile.to) + 1;
   }
 
   let marker = '';
@@ -42,6 +46,7 @@ function ring(state) {
 
   return `<svg viewBox="0 0 200 200" aria-hidden="true">
     <circle cx="100" cy="100" r="${R}" fill="none" stroke="var(--ring-track)" stroke-width="13"/>
+    ${wideFrom ? arc(wideFrom, wideTo, cycle, '', 13).replace('class=""', 'stroke="var(--sage)" opacity="0.17"') : ''}
     ${fertFrom ? arc(fertFrom, fertTo, cycle, '', 13).replace('class=""', 'stroke="var(--sage-bg)"') : ''}
     ${arc(1, period, cycle, '', 13).replace('class=""', 'stroke="var(--accent)"')}
     ${ovDay ? arc(ovDay, ovDay, cycle, '', 13).replace('class=""', 'stroke="var(--sage)"') : ''}

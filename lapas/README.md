@@ -76,7 +76,8 @@ lapas/
 node tools/dev-server.mjs 8132     # serveris be cache
 open http://localhost:8132/lapas/tools/preview.html   # visų ekranų stendas
 open http://localhost:8132/lapas/tools/seed.html      # testiniai duomenys
-npm test                            # 74 testai
+open http://localhost:8132/lapas/tools/qr-test.html   # QR grandinė be kameros
+npm test                            # 80 testų
 ```
 
 Ikonos pergeneruojamos: `node tools/make-icons.mjs`

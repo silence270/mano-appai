@@ -40,6 +40,9 @@ const LT = {
   legend_period: 'Mėnesinės', legend_predicted: 'Prognozė', legend_fertile: 'Vaisingos',
   legend_ovulation: 'Ovuliacija', legend_window: 'Galimos dienos', legend_logged: 'Yra įrašas',
   months: ['Sausis','Vasaris','Kovas','Balandis','Gegužė','Birželis','Liepa','Rugpjūtis','Rugsėjis','Spalis','Lapkritis','Gruodis'],
+  // Kilmininkas atskirai: taisyklės nėra — balandis→balandžio, rugpjūtis→rugpjūčio,
+  // rugsėjis→rugsėjo, lapkritis→lapkričio, gruodis→gruodžio.
+  months_gen: ['sausio','vasario','kovo','balandžio','gegužės','birželio','liepos','rugpjūčio','rugsėjo','spalio','lapkričio','gruodžio'],
   weekdays: ['S','P','A','T','K','P','Š'],   // 0 = sekmadienis (Date.getUTCDay tvarka)
   today: 'Šiandien', future_note: 'Ateities dienos nežymimos.',
   // žymėjimas
@@ -119,6 +122,8 @@ const LT = {
   onb_skip: 'Praleisti',
   set_stopped_hormones: 'Kada nutraukei hormoninę kontracepciją',
   // atsakomybė (FDA Special Control formuluotės)
+  err_storage: 'Šioje naršyklėje negalima saugoti duomenų. Dažniausiai taip būna privačiame naršymo režime — atidaryk įprastame lange.',
+  err_generic: 'Kažkas nepavyko paleisti. Pabandyk uždaryti ir atidaryti iš naujo.',
   disc_title: 'Ką ši programėlė gali ir ko negali',
   disc_not_contraception: 'Tai NE kontracepcijos priemonė. Jokia programėlė neapsaugo nuo nėštumo.',
   disc_no_method: 'Jokia kontracepcijos priemonė nėra 100 % efektyvi.',
@@ -233,6 +238,7 @@ const EN = {
   legend_period: 'Period', legend_predicted: 'Predicted', legend_fertile: 'Fertile',
   legend_ovulation: 'Ovulation', legend_window: 'Possible days', legend_logged: 'Has entry',
   months: ['January','February','March','April','May','June','July','August','September','October','November','December'],
+  months_gen: ['January','February','March','April','May','June','July','August','September','October','November','December'],
   weekdays: ['S','M','T','W','T','F','S'],   // 0 = Sunday
   today: 'Today', future_note: 'Future days cannot be logged.',
   log_flow: 'Flow', log_mood: 'Mood', log_symptoms: 'Symptoms',
@@ -305,6 +311,8 @@ const EN = {
   onb_birth_year: 'What year were you born?',
   onb_skip: 'Skip',
   set_stopped_hormones: 'When you stopped hormonal contraception',
+  err_storage: 'This browser cannot store data. This usually happens in private browsing — open the app in a normal window.',
+  err_generic: 'Something failed to start. Try closing and reopening the app.',
   disc_title: 'What this app can and cannot do',
   disc_not_contraception: 'This is NOT contraception. No app protects against pregnancy.',
   disc_no_method: 'No method of contraception is 100 % effective.',
@@ -394,13 +402,14 @@ export const dictionaries = DICT;
 let current = 'lt';
 
 export function detectLang() {
-  const n = (navigator.language || 'lt').toLowerCase();
+  const n = (typeof navigator !== 'undefined' ? navigator.language : 'lt' || 'lt').toLowerCase();
   return n.startsWith('lt') ? 'lt' : 'en';
 }
 
 export function setLang(lang) {
   current = DICT[lang] ? lang : 'lt';
-  document.documentElement.lang = current;
+  // Testai kviečia šitą be DOM — kalbos logika neturi nuo jo priklausyti.
+  if (typeof document !== 'undefined') document.documentElement.lang = current;
   return current;
 }
 
@@ -440,12 +449,13 @@ export function name(item) { return item ? `${current === 'en' ? item.en : item.
 
 export function monthName(i) { return t('months')[i]; }
 
+
 /** „rugpjūčio 22 d." / „22 August" */
 export function formatDate(isoStr, opts = {}) {
   const [y, m, d] = isoStr.split('-').map(Number);
   const mn = t('months')[m - 1];
   if (current === 'lt') {
-    const gen = mn.replace(/is$|as$|ė$/, s => ({ is: 'io', as: 'o', 'ė': 'ės' }[s]));
+    const gen = t('months_gen')[m - 1];
     return opts.year ? `${y} m. ${gen} ${d} d.` : `${gen} ${d} d.`;
   }
   return opts.year ? `${d} ${mn} ${y}` : `${d} ${mn}`;
@@ -456,12 +466,8 @@ export function formatRange(from, to) {
   const [, m1, d1] = from.split('-');
   const [, m2, d2] = to.split('-');
   if (m1 === m2) {
-    const mn = t('months')[+m1 - 1];
-    if (current === 'lt') {
-      const gen = mn.replace(/is$|as$|ė$/, x => ({ is: 'io', as: 'o', 'ė': 'ės' }[x]));
-      return `${gen} ${+d1}–${+d2} d.`;
-    }
-    return `${+d1}–${+d2} ${mn}`;
+    if (current === 'lt') return `${t('months_gen')[+m1 - 1]} ${+d1}–${+d2} d.`;
+    return `${+d1}–${+d2} ${t('months')[+m1 - 1]}`;
   }
   return `${formatDate(from)} – ${formatDate(to)}`;
 }
