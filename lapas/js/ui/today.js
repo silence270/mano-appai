@@ -327,8 +327,11 @@ export function renderToday(ctx) {
     ${state.mode === 'contraception' ? pillCard(state, entry) : ''}
 
     ${state.late >= 7 && !isPregnancy ? `<div class="note warn">${esc(t('suggest_test'))}</div>` : ''}
-    ${ctx.needsBackup ? `<div class="note warn note-row">
-      <span>${esc(t('backup_nudge'))}</span>
+    ${ctx.storageRisk ? `<div class="note warn note-row">
+      <span><b>${esc(t('storage_unsafe'))}</b><br>${esc(t('storage_explain'))}</span>
+      <button class="btn sm ghost" data-act="backup">${esc(t('backup_now'))}</button></div>` : ''}
+    ${ctx.needsBackup && !ctx.storageRisk ? `<div class="note warn note-row">
+      <span>${esc(ctx.daysSinceBackup ? t('backup_overdue', { n: ctx.daysSinceBackup }) : t('backup_nudge'))}<br>${esc(t('backup_why_now'))}</span>
       <button class="btn sm ghost" data-act="backup">${esc(t('backup_now'))}</button></div>` : ''}
 
     <div class="row" style="margin:14px 0 4px">

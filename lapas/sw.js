@@ -3,7 +3,7 @@
  * Tinklas naudojamas tik naujesnei versijai parsisiųsti fone.
  */
 
-const V = 'lapas-v6';
+const V = 'lapas-v7';
 const ASSETS = [
   './', './index.html', './styles.css', './manifest.json',
   './js/app.js', './js/cycle.js', './js/db.js', './js/crypto.js',
@@ -11,7 +11,7 @@ const ASSETS = [
   './js/predict.js', './js/vault.js',
   './js/ui/dom.js', './js/ui/today.js', './js/ui/calendar.js',
   './js/ui/insights.js', './js/ui/settings.js', './js/ui/log.js',
-  './js/ui/lock.js', './js/ui/onboarding.js', './js/ui/qr.js',
+  './js/ui/lock.js', './js/ui/onboarding.js', './js/ui/qr.js', './js/ui/install.js',
   './lib/qrcode-generator.js', './lib/jsqr.js',
   './lib/hash-wasm.js', './lib/wordlist.js',
   './js/lang/en.js', './js/lang/lt.js', './js/lang/de.js',

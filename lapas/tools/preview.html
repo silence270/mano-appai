@@ -111,7 +111,7 @@ function draw() {
     storage: { usage: 48000, persisted: false },
     bio: { available: true, enabled: false }, isDecoy: false, onLockNow: () => {}, wipeAfter: 0, autoLang: 'lt',
     entry: days[state.today],
-    needsBackup: set === 'rich',
+    needsBackup: set === 'rich', storageRisk: false, daysSinceBackup: 0,
     onLog: iso => openLog(iso, days[iso], async () => {}, { frequent: C.mostUsed(days, C.todayISO()) }),
     onQuickPeriod: () => {}, onSettings: async () => {}, onBackup: () => {}, onPill: () => {}, onPickDay: () => {},
     readAll: async () => ({ days, settings }), applyImport: async () => 0,

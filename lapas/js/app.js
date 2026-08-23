@@ -18,6 +18,7 @@ import { renderSettings } from './ui/settings.js';
 import { openLog, normalize } from './ui/log.js';
 import { showLock, showSetup, showRecoveryCode } from './ui/lock.js';
 import { renderOnboarding } from './ui/onboarding.js';
+import { isStandalone, ensurePersistence, showInstallPrompt, backupOverdue } from './ui/install.js';
 
 const TABS = [
   { id: 'today', icon: ICON.today, label: 'nav_today' },
@@ -73,13 +74,16 @@ function updateBadge() {
   } catch {}
 }
 
-/** Priminti apie kopiją, jei nedaryta > 45 d. ir yra ką prarasti. */
+/**
+ * Priminti apie kopiją. Riba sumažinta nuo 45 iki 30 dienų ir pridėta
+ * antra sąlyga: jei naršyklė nepažadėjo duomenų saugoti, priminti anksčiau —
+ * ten realiai gresia Safari valymas.
+ */
 function needsBackup() {
   const n = Object.keys(app.days).length;
-  if (n < 12) return false;
-  const at = app.settings.backupReminderAt;
-  if (!at) return true;
-  return C.daysBetween(at, C.todayISO()) > 45;
+  if (n < 8) return false;
+  const limit = app.storage.persisted ? 30 : 10;
+  return !!backupOverdue(app.settings, C.todayISO(), limit);
 }
 
 // ------------------------------------------------------------------ veiksmai
@@ -165,6 +169,8 @@ function render() {
     autoLang: detectLang(),
     entry: app.days[app.state.today],
     needsBackup: needsBackup(),
+    storageRisk: !app.storage.persisted || !isStandalone(),
+    daysSinceBackup: backupOverdue(app.settings, C.todayISO(), 0) || 0,
     onLog: log,
     onQuickPeriod: quickPeriod,
     onPill: markPill,
@@ -271,6 +277,14 @@ async function boot() {
   }
 
   if (!(await DB.isInitialised())) {
+    // Prieš pirmą įrašą — įspėjimas apie Safari. Vėliau įspėti nebėra prasmės:
+    // duomenys jau gali būti sukurti ir po savaitės dingę.
+    if (!isStandalone()) {
+      await new Promise(res => showInstallPrompt(res));
+      if (isStandalone()) { /* jei per tą laiką paleido iš ekrano */ }
+    }
+    await ensurePersistence();
+
     const legacy = await migrateLegacy();
     showSetup(async pin => {
       const seed = legacy ? { days: legacy.days || {}, settings: legacy.settings || {} } : undefined;
@@ -295,6 +309,8 @@ async function boot() {
 async function afterUnlock() {
   await reload();
   app.storage = await DB.storageInfo();
+  // Pažadas galioja tik tol, kol jo neatšaukė naršyklė — tikrinam kaskart.
+  if (!app.storage.persisted) app.storage.persisted = (await ensurePersistence()).persisted;
 
   if (!app.settings.onboarded) {
     const root = $('#app');

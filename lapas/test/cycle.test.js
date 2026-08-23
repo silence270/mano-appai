@@ -529,3 +529,16 @@ test('be istorijos greitoji eilutė tuščia, o ne atsitiktinė', () => {
   assert.deepEqual(top.symptoms, []);
   assert.deepEqual(top.mood, []);
 });
+
+// --- apsauga nuo duomenų praradimo -----------------------------------------
+
+test('kopijos priminimas skaičiuoja dienas, o ne tik „seniai"', async () => {
+  const { backupOverdue } = await import('../js/ui/install.js');
+  assert.equal(backupOverdue({}, '2026-08-23'), true, 'niekada nedaryta — priminti');
+  assert.equal(backupOverdue({ backupReminderAt: '2026-08-20' }, '2026-08-23', 30), 0,
+    'prieš tris dienas — dar anksti');
+  assert.equal(backupOverdue({ backupReminderAt: '2026-07-01' }, '2026-08-23', 30), 53,
+    'turi grąžinti, kiek dienų praėjo');
+  assert.equal(backupOverdue({ backupReminderAt: '2026-08-10' }, '2026-08-23', 10), 13,
+    'be apsaugotos saugyklos riba trumpesnė');
+});
