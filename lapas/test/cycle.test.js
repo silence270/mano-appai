@@ -355,3 +355,22 @@ test('nėštumo terminas slenka kartu su ciklo ilgiu', () => {
   assert.equal(C.daysBetween(short.due, std.due), 3, '25 d. ciklas → terminas 3 d. anksčiau');
   assert.equal(long.week, std.week, 'savaitė skaičiuojama nuo mėnesinių, nesikeičia');
 });
+
+test('temperatūros grafikas parenka ciklą, kuriame yra ką rodyti', () => {
+  // BBT tik praėjusiame cikle; dabartinis dar tuščias
+  const days = {};
+  let start = '2026-06-01';
+  for (let c = 0; c < 2; c++) {
+    for (let i = 0; i < 4; i++) days[C.addDays(start, i)] = { flow: 3 };
+    if (c === 0) for (let i = 5; i < 24; i++)
+      days[C.addDays(start, i)] = { bbt: 36.4 + (i > 15 ? 0.35 : 0) + (i % 3) * 0.02 };
+    start = C.addDays(start, 29);
+  }
+  const st = C.analyze({ days, today: C.addDays(start, 4) });
+  const pick = C.bbtCycleToShow(days, st);
+  assert.equal(pick.current, false, 'turi pasiūlyti praėjusį ciklą');
+  assert.equal(pick.start, '2026-06-01');
+  const chart = C.bbtChart(days, pick.start, pick.end);
+  assert.ok(chart.points.filter(p => p.t != null).length >= 9);
+  assert.ok(chart.ovulation, 'praėjusiame cikle matomas temperatūros šuolis');
+});

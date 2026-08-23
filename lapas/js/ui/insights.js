@@ -32,8 +32,9 @@ function cycleBars(state) {
 }
 
 function bbtChart(state) {
-  if (!state.cycleStart) return `<div class="empty">${esc(t('ins_bbt_empty'))}</div>`;
-  const { points, coverline, ovulation } = C.bbtChart(state.days, state.cycleStart, state.today);
+  const pick = C.bbtCycleToShow(state.days, state);
+  if (!pick) return `<div class="empty">${esc(t('ins_bbt_empty'))}</div>`;
+  const { points, coverline, ovulation } = C.bbtChart(state.days, pick.start, pick.end);
   const withT = points.filter(p => p.t != null);
   if (withT.length < 4) return `<div class="empty">${esc(t('ins_bbt_empty'))}</div>`;
 
@@ -47,12 +48,15 @@ function bbtChart(state) {
   const path = withT.map((p, i) => `${i ? 'L' : 'M'}${x(p.day - 1).toFixed(1)},${y(p.t).toFixed(1)}`).join('');
   const ticks = [lo + (hi - lo) * 0.15, lo + (hi - lo) * 0.5, lo + (hi - lo) * 0.85];
 
-  return `<svg class="chart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">
+  const label = pick.current ? '' :
+    `<div style="font-size:11.5px;color:var(--ink-3);margin-bottom:6px">${esc(formatDate(pick.start))} – ${esc(formatDate(pick.end))}</div>`;
+
+  return `${label}<svg class="chart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">
     ${ticks.map(v => `<line class="grid-line" x1="${PAD_L}" x2="${W - 4}" y1="${y(v).toFixed(1)}" y2="${y(v).toFixed(1)}"/>
       <text x="2" y="${(y(v) + 3).toFixed(1)}">${v.toFixed(2)}</text>`).join('')}
     ${coverline ? `<line class="cover" x1="${PAD_L}" x2="${W - 4}" y1="${y(coverline).toFixed(1)}" y2="${y(coverline).toFixed(1)}"/>` : ''}
     ${ovulation ? (() => {
-      const d = C.daysBetween(state.cycleStart, ovulation);
+      const d = C.daysBetween(pick.start, ovulation);
       return `<line class="ovline" x1="${x(d).toFixed(1)}" x2="${x(d).toFixed(1)}" y1="${PAD_T}" y2="${H - PAD_B}"/>`;
     })() : ''}
     <path class="curve" d="${path}"/>

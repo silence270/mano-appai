@@ -633,6 +633,24 @@ export function dayPhaseMap(days, state) {
   return map;
 }
 
+/**
+ * Kurį ciklą verta rodyti temperatūros grafike: dabartinį, jei jame jau yra
+ * matavimų, kitaip — paskutinį, kuriame jų pakanka. Tuščias grafikas nieko
+ * nepasako, o praėjusio ciklo kreivė su šuoliu — pasako daug.
+ */
+export function bbtCycleToShow(days, state, minPoints = 4) {
+  const count = (from, to) => rangeDays(from, to).filter(d => typeof days[d]?.bbt === 'number').length;
+  if (state.cycleStart && count(state.cycleStart, state.today) >= minPoints) {
+    return { start: state.cycleStart, end: state.today, current: true };
+  }
+  for (let i = state.validCycles.length - 1; i >= 0; i--) {
+    const c = state.validCycles[i];
+    const end = addDays(c.next, -1);
+    if (count(c.start, end) >= minPoints) return { start: c.start, end, current: false };
+  }
+  return state.cycleStart ? { start: state.cycleStart, end: state.today, current: true } : null;
+}
+
 /** BBT grafiko taškai dabartiniam (ar nurodytam) ciklui. */
 export function bbtChart(days, cycleStart, until) {
   const cd = rangeDays(cycleStart, until);
