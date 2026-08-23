@@ -214,16 +214,19 @@ export function renderSettings(ctx) {
 
 function exportSheet(ctx) {
   const s = sheet({ title: t('export_title') });
+  // Šifravimas įjungtas iš anksto: telefone duomenys užšifruoti, tad
+  // neužšifruota kopija būtų silpniausia grandinės vieta.
   s.body.innerHTML = `
     <div class="note">${esc(t('export_note'))}</div>
     <div class="field" style="margin-top:14px">
-      <label><input type="checkbox" id="ex-enc" style="width:auto;margin-right:8px">${esc(t('export_encrypt'))}</label>
+      <label><input type="checkbox" id="ex-enc" checked style="width:auto;margin-right:8px">${esc(t('export_encrypt'))}</label>
     </div>
-    <div class="field" id="ex-pass-box" hidden>
+    <div class="field" id="ex-pass-box">
       <label>${esc(t('export_password'))}</label>
       <input type="password" id="ex-pass" autocomplete="new-password">
     </div>
-    <div class="note warn" id="ex-warn">${esc(t('export_plain_warn'))}</div>
+    <div class="note warn" id="ex-warn" hidden>${esc(t('export_plain_warn'))}</div>
+    <div class="note">${esc(t('export_name_note'))}</div>
     <div style="margin:18px 0 8px"><button class="btn block" id="ex-go">${esc(t('export_do'))}</button></div>`;
 
   const enc = $('#ex-enc', s.body);
@@ -234,7 +237,11 @@ function exportSheet(ctx) {
 
   $('#ex-go', s.body).onclick = async () => {
     const pass = enc.checked ? $('#ex-pass', s.body).value : '';
-    if (enc.checked && pass.length < 4) { toast(t('set_pin_short')); return; }
+    if (enc.checked && pass.length < 4) { toast(t('lock_min')); return; }
+    if (!enc.checked && !(await confirmSheet({
+      title: t('export_plain_confirm'), text: t('export_plain_why'),
+      confirm: t('export_plain_yes'),
+    }))) return;
     const { days, settings } = await ctx.readAll();
     const { blob, filename } = await T.exportFile(days, settings, pass || undefined);
     downloadBlob(blob, filename);

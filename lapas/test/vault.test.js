@@ -347,3 +347,35 @@ test('biometrikos vieta rakte yra visada — net kai neįjungta', async () => {
   assert.equal(slot.subarray(120, 180).length, 60);
   assert.ok(slot.subarray(120, 180).some(b => b !== 0), 'turi atrodyti kaip tikras raktas');
 });
+
+// --- senoji versija --------------------------------------------------------
+
+test('perkėlimo funkcijos egzistuoja — be jų neužšifruota saugykla liktų telefone', () => {
+  assert.equal(typeof V.findLegacy, 'function');
+  assert.equal(typeof V.dropLegacy, 'function');
+});
+
+test('senosios saugyklos nesant perkėlimas tyliai praeina', async () => {
+  await fresh('4821');
+  assert.equal(await V.findLegacy(), null);
+  assert.equal(typeof (await V.dropLegacy()), 'boolean');
+});
+
+test('visos app’o naudojamos saugyklos funkcijos iš tikrųjų egzistuoja', async () => {
+  // Šitas testas atsirado todėl, kad perrašant vault.js dingo findLegacy ir
+  // dropLegacy, o `.catch(() => {})` app'e tai nutylėjo: neužšifruota senoji
+  // saugykla liko telefone ir niekas apie tai nesužinojo.
+  const { readFileSync } = await import('node:fs');
+  const src = readFileSync(new URL('../js/vault.js', import.meta.url), 'utf8');
+  const exported = new Set([...src.matchAll(/export (?:async )?(?:function|const) (\w+)/g)].map(m => m[1]));
+
+  const missing = [];
+  for (const f of ['app.js', 'db.js', 'ui/lock.js', 'ui/settings.js']) {
+    const code = readFileSync(new URL(`../js/${f}`, import.meta.url), 'utf8');
+    for (const m of code.matchAll(/\bV\.(\w+)\s*\(/g))
+      if (!exported.has(m[1])) missing.push(`${f}: V.${m[1]}`);
+    for (const m of code.matchAll(/vault\.js'\)[\s\S]{0,40}?V\.(\w+)\s*\(/g))
+      if (!exported.has(m[1])) missing.push(`${f}: dinaminis ${m[1]}`);
+  }
+  assert.deepEqual([...new Set(missing)], []);
+});

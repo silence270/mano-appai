@@ -27,7 +27,8 @@ function fakeDays(n) {
 test('failo eksportas ir importas grąžina tuos pačius duomenis', async () => {
   const days = fakeDays(120), settings = { lang: 'lt', avgCycle: 29 };
   const { blob, filename } = await T.exportFile(days, settings);
-  assert.match(filename, /^lapas-\d{4}-\d{2}-\d{2}\.json$/);
+  assert.match(filename, /^\d{8}\.json$/, 'vardas neturi išduoti, kas viduje');
+  assert.ok(!/lapas|cycle|period/i.test(filename));
   const back = await T.parseFile(await blob.text());
   assert.deepEqual(back.days, days);
   assert.equal(back.settings.avgCycle, 29);
@@ -37,7 +38,7 @@ test('failo eksportas ir importas grąžina tuos pačius duomenis', async () => 
 test('užšifruoto failo be slaptažodžio neatidarysi, su blogu — irgi ne', async () => {
   const days = fakeDays(30);
   const { blob, filename } = await T.exportFile(days, {}, 'slapta123');
-  assert.match(filename, /-enc\.json$/);
+  assert.match(filename, /^\d{8}\.json$/, 'šifruoto vardas irgi neutralus');
   const text = await blob.text();
 
   assert.ok(!text.includes('cramps'), 'užšifruotame faile neturi likti atviro turinio');

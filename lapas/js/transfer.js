@@ -78,9 +78,12 @@ export async function exportFile(days, settings, password) {
     payload = { app: 'lapas', v: FILE_VERSION, exportedAt: payload.exportedAt, enc: await encryptJSON(payload, password) };
   }
   const json = JSON.stringify(payload, null, password ? 0 : 1);
+  // Failo vardas neutralus: „lapas-2026-08-23.json" pasakytų, kas viduje,
+  // bet kam, kas pamatytų failą telefone, laiške ar debesyje.
+  const stamp = new Date().toISOString().slice(0, 10).replace(/-/g, '');
   return {
     blob: new Blob([json], { type: 'application/json' }),
-    filename: `lapas-${new Date().toISOString().slice(0, 10)}${password ? '-enc' : ''}.json`,
+    filename: `${stamp}.json`,
   };
 }
 

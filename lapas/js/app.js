@@ -252,6 +252,18 @@ async function boot() {
   });
   window.addEventListener('pagehide', () => { privacyShield(true); DB.lock(); });
 
+  // Senoji, neužšifruota saugykla šalinama visada — ne tik perkėlimo metu.
+  // Kitaip ji liktų telefone tiems, kas app'ą jau buvo paleidę anksčiau,
+  // ir visas naujas užraktas nieko neduotų.
+  if (await DB.isInitialised()) {
+    // Klaida čia nutildoma sąmoningai (senosios saugyklos gali ir nebūti),
+    // bet į konsolę įrašoma — tylus catch jau buvo paslėpęs tai, kad šitos
+    // funkcijos apskritai nebuvo.
+    import('./vault.js')
+      .then(V => V.dropLegacy())
+      .catch(e => console.warn('senosios saugyklos šalinimas:', e));
+  }
+
   if (!(await DB.isInitialised())) {
     const legacy = await migrateLegacy();
     showSetup(async pin => {

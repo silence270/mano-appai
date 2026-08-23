@@ -4,6 +4,15 @@ Ciklo sekimo app'as, kuris **nesiunčia nieko niekur**. Nėra paskyros, nėra se
 nėra tinklo užklausų. Viskas guli telefone (IndexedDB) ir išeina tik tada, kai pati
 paspaudi „Atsisiųsti kopiją" arba perkeli QR kodais.
 
+## Saugumas trumpai
+
+Duomenys telefone **visada užšifruoti** (AES-GCM-256, raktas iš PIN per PBKDF2
+310k). Be PIN app'as neveikia. Perėjus į foną — užsirakina, o turinys uždengiamas
+prieš iOS ekrano nuotrauką. PIN atvirkščiai atveria tuščią app'ą, atrodantį kaip
+ką tik įdiegtas. Pamiršus PIN gelbsti 120 bitų atkūrimo kodas.
+
+Pilna grėsmių apžvalga ir sąrašas, ko app'as **negali**: [SAUGUMAS.md](SAUGUMAS.md)
+
 ## Kuo skiriasi nuo Flo ir panašių
 
 | | Flo | Lapas |
@@ -90,7 +99,7 @@ node tools/dev-server.mjs 8132     # serveris be cache
 open http://localhost:8132/lapas/tools/preview.html   # visų ekranų stendas
 open http://localhost:8132/lapas/tools/seed.html      # testiniai duomenys
 open http://localhost:8132/lapas/tools/qr-test.html   # QR grandinė be kameros
-npm test                            # 91 testas
+npm test                            # 134 testai
 ```
 
 Ikonos pergeneruojamos: `node tools/make-icons.mjs`

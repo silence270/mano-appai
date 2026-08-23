@@ -426,6 +426,51 @@ export async function wipe() {
   });
 }
 
+// ------------------------------------------------------ senoji versija
+
+/**
+ * Ar telefone dar guli pirmosios versijos saugykla, kurioje duomenys buvo
+ * laikomi be šifravimo. Grąžinami tik neužšifruoti duomenys — jei senoji
+ * versija jau turėjo PIN, jos turinys be to PIN neprieinamas.
+ */
+export async function findLegacy() {
+  try {
+    const db = await new Promise((res, rej) => {
+      const r = indexedDB.open('lapas');
+      r.onsuccess = () => res(r.result);
+      r.onerror = () => rej(r.error);
+      r.onupgradeneeded = () => { try { r.transaction.abort(); } catch {} res(null); };
+      r.onblocked = () => res(null);
+    });
+    if (!db) return null;
+    if (!db.objectStoreNames.contains('vault')) { db.close(); return null; }
+    const data = await new Promise(res => {
+      const st = db.transaction('vault', 'readonly').objectStore('vault');
+      const d = st.get('days'), s2 = st.get('settings');
+      let days, settings, n = 0;
+      const done = () => { if (++n === 2) res({ days, settings }); };
+      d.onsuccess = () => { days = d.result; done(); };
+      s2.onsuccess = () => { settings = s2.result; done(); };
+      d.onerror = s2.onerror = done;
+    });
+    db.close();
+    if (!data.days || typeof data.days !== 'object' || data.days.ct) return null;
+    return data;
+  } catch { return null; }
+}
+
+/** Pašalina senąją saugyklą. Kviečiama visada, ne tik po perkėlimo. */
+export function dropLegacy() {
+  return new Promise(res => {
+    try {
+      const r = indexedDB.deleteDatabase('lapas');
+      r.onsuccess = () => res(true);
+      r.onerror = () => res(false);
+      r.onblocked = () => res(false);
+    } catch { res(false); }
+  });
+}
+
 // ------------------------------------------------- Face ID / Touch ID
 
 /**
