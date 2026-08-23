@@ -11,32 +11,16 @@
 
 'use strict';
 
-/** Visos Europos Sąjungos oficialios kalbos. */
+/**
+ * Kalbos, kurios IŠ TIKRŲJŲ išverstos. Sąrašas trumpas sąmoningai: rodyti
+ * kalbą, kurios nėra, reikštų parodyti vartotojai pusiau anglišką app'ą.
+ * Naujos pridedamos čia tik kartu su js/lang/<id>.js failu.
+ */
 export const LANGS = [
   { id: 'en', label: 'English' },
-  { id: 'bg', label: 'Български' },
-  { id: 'cs', label: 'Čeština' },
-  { id: 'da', label: 'Dansk' },
-  { id: 'de', label: 'Deutsch' },
-  { id: 'el', label: 'Ελληνικά' },
-  { id: 'es', label: 'Español' },
-  { id: 'et', label: 'Eesti' },
-  { id: 'fi', label: 'Suomi' },
-  { id: 'fr', label: 'Français' },
-  { id: 'ga', label: 'Gaeilge' },
-  { id: 'hr', label: 'Hrvatski' },
-  { id: 'hu', label: 'Magyar' },
-  { id: 'it', label: 'Italiano' },
   { id: 'lt', label: 'Lietuvių' },
-  { id: 'lv', label: 'Latviešu' },
-  { id: 'mt', label: 'Malti' },
-  { id: 'nl', label: 'Nederlands' },
+  { id: 'de', label: 'Deutsch' },
   { id: 'pl', label: 'Polski' },
-  { id: 'pt', label: 'Português' },
-  { id: 'ro', label: 'Română' },
-  { id: 'sk', label: 'Slovenčina' },
-  { id: 'sl', label: 'Slovenščina' },
-  { id: 'sv', label: 'Svenska' },
 ];
 
 const KNOWN = new Set(LANGS.map(l => l.id));

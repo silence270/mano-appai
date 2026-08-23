@@ -3,7 +3,7 @@
  * Tinklas naudojamas tik naujesnei versijai parsisiųsti fone.
  */
 
-const V = 'lapas-v7';
+const V = 'leaf-v8';
 const ASSETS = [
   './', './index.html', './styles.css', './manifest.json',
   './js/app.js', './js/cycle.js', './js/db.js', './js/crypto.js',
@@ -14,7 +14,7 @@ const ASSETS = [
   './js/ui/lock.js', './js/ui/onboarding.js', './js/ui/qr.js', './js/ui/install.js',
   './lib/qrcode-generator.js', './lib/jsqr.js',
   './lib/hash-wasm.js', './lib/wordlist.js',
-  './js/lang/en.js', './js/lang/lt.js', './js/lang/de.js',
+  './js/lang/en.js', './js/lang/lt.js', './js/lang/de.js', './js/lang/pl.js',
   './icons/icon-180.png', './icons/icon-192.png', './icons/icon-512.png',
 ];
 
@@ -30,7 +30,7 @@ self.addEventListener('message', e => {
 
 self.addEventListener('activate', e => {
   e.waitUntil(caches.keys()
-    .then(ks => Promise.all(ks.filter(k => k !== V && k.startsWith('lapas-')).map(k => caches.delete(k))))
+    .then(ks => Promise.all(ks.filter(k => k !== V && k.startsWith('lapas-') || k.startsWith('leaf-')).map(k => caches.delete(k))))
     .then(() => self.clients.claim()));
 });
 
