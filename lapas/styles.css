@@ -204,6 +204,9 @@ h1,h2,h3 { margin: 0; font-weight: 700; letter-spacing: -.02em; }
 .cal-cell.k-period.pred.today { box-shadow: inset 0 0 0 1.6px var(--accent), inset 0 0 0 3px var(--ink); }
 .cal-cell.k-period-window { background: var(--accent-bg); color: var(--accent); }
 .cal-cell.k-fertile { background: var(--sage-bg); color: var(--sage); }
+/* Platusis vaisingas langas — tik teksto spalva: fonas ar kontūras čia
+   konkuruotų su siauruoju langu, kuriuo iš tikrųjų galima remtis. */
+.cal-cell.k-fertile-wide { color: var(--sage); font-weight: 700; }
 .cal-cell.k-ovulation { background: var(--sage); color: var(--on-accent); font-weight: 800; }
 .cal-cell.k-ovulation.pred { background: transparent; color: var(--sage); box-shadow: inset 0 0 0 1.6px var(--sage); }
 .cal-dot { position: absolute; bottom: 5px; width: 4px; height: 4px; border-radius: 50%; background: currentColor; opacity: .55; }

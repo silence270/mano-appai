@@ -113,9 +113,10 @@ function patterns(state) {
 export function renderInsights(ctx) {
   const { state } = ctx;
   const reg = C.regularity(state);
+  const cldTxt = reg.cld != null ? String(reg.cld).replace('.', ',') : '';
   const regNote = reg.level === 'unknown' ? t('reg_unknown_note')
-    : reg.level === 'regular' ? t('reg_regular_note')
-    : t('reg_' + reg.level + '_note', { n: reg.spread });
+    : reg.level === 'very_regular' ? t('reg_very_regular_note')
+    : t('reg_' + reg.level + '_note', { n: cldTxt });
 
   return el(`<div class="screen">
     <div class="head"><h1>${esc(t('nav_insights'))}</h1>
@@ -131,7 +132,8 @@ export function renderInsights(ctx) {
           reg.spread != null ? `${reg.min}–${reg.max} ${t('ins_days')}` : '')}
         ${statCard(t('ins_luteal'), state.lutealDays, t('ins_days'))}
       </div>
-      <div class="note">${esc(regNote)}</div>
+      <div class="note">${esc(regNote)}${
+        reg.percentile ? ' ' + esc(t('reg_percentile', { n: reg.percentile })) : ''}</div>
     </div>
 
     <div class="card"><h2>${esc(t('ins_history'))}</h2>${cycleBars(state)}</div>

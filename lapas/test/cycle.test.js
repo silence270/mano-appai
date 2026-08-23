@@ -332,3 +332,26 @@ test('kalibravimo dengimas realioje istorijoje artimas 80 %', () => {
   assert.ok(cal.n >= 8, `per mažai palyginimų: ${cal.n}`);
   assert.ok(cal.coverage >= 0.6, `dengimas ${cal.coverage} — langas per siauras`);
 });
+
+test('reguliarumas matuojamas gretimų ciklų skirtumu, ne max–min', () => {
+  // Nuosekliai slenkantys ciklai: max−min = 6, bet gretimi skiriasi po 1 d.
+  const drift = build('2024-01-01', [26, 27, 28, 29, 30, 31, 32]);
+  const jumpy = build('2024-01-01', [26, 32, 26, 32, 26, 32, 26]);
+  const a = C.regularity(C.analyze({ days: drift.days, today: C.addDays(drift.lastStart, 3) }));
+  const b = C.regularity(C.analyze({ days: jumpy.days, today: C.addDays(jumpy.lastStart, 3) }));
+  assert.equal(a.spread, b.spread, 'max−min abiem vienodas (6 d.)');
+  assert.ok(a.cld < b.cld, `slenkantys ${a.cld} turi atrodyti pastovesni nei šokinėjantys ${b.cld}`);
+  assert.ok(['very_regular', 'regular'].includes(a.level), `slenkantys → ${a.level}`);
+  assert.ok(['variable', 'irregular'].includes(b.level), `šokinėjantys → ${b.level}`);
+  assert.ok(b.percentile < a.percentile, 'šokinėjanti moteris turi būti žemiau pagal pastovumą');
+});
+
+test('nėštumo terminas slenka kartu su ciklo ilgiu', () => {
+  const std = C.pregnancyInfo('2026-01-01', '2026-04-02', 28);
+  const long = C.pregnancyInfo('2026-01-01', '2026-04-02', 32);
+  const short = C.pregnancyInfo('2026-01-01', '2026-04-02', 25);
+  assert.equal(std.due, '2026-10-08');
+  assert.equal(C.daysBetween(std.due, long.due), 4, '32 d. ciklas → terminas 4 d. vėliau');
+  assert.equal(C.daysBetween(short.due, std.due), 3, '25 d. ciklas → terminas 3 d. anksčiau');
+  assert.equal(long.week, std.week, 'savaitė skaičiuojama nuo mėnesinių, nesikeičia');
+});

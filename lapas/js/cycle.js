@@ -369,7 +369,7 @@ export function analyze({ days = {}, settings = {}, today = todayISO() } = {}) {
     phase,
     post, prediction: live,
     pregnancy: settings.mode === 'pregnancy'
-      ? pregnancyInfo(settings.pregnancyStart || lastPeriod, today) : null,
+      ? pregnancyInfo(settings.pregnancyStart || lastPeriod, today, avgCycle) : null,
   };
 }
 
@@ -431,20 +431,26 @@ function currentPhase({ days, today, cycleStart, dayOfCycle, avgPeriod,
   return PHASE.FOLLICULAR;
 }
 
-/** Nėštumo informacija: standartinis Naegele 280 d. nuo paskutinių mėnesinių. */
-export function pregnancyInfo(lmp, today = todayISO()) {
+/**
+ * Nėštumo informacija. Naegele 280 d. nuo paskutinių mėnesinių prielaida yra
+ * 28 d. ciklas su ovuliacija 14-ą dieną. Ilgesniam ar trumpesniam ciklui
+ * apvaisinimas įvyksta atitinkamai vėliau ar anksčiau, todėl terminas slenka
+ * kartu (Parikh korekcija). 32 d. ciklui tai +4 dienos.
+ */
+export function pregnancyInfo(lmp, today = todayISO(), cycleLength = 28) {
   if (!lmp) return null;
   const days = daysBetween(lmp, today);
   if (days < 0) return null;
+  const shift = clamp(Math.round((cycleLength || 28) - 28), -7, 14);
   const week = Math.floor(days / 7);
   return {
-    lmp,
-    due: addDays(lmp, 280),
+    lmp, cycleShift: shift,
+    due: addDays(lmp, 280 + shift),
     day: days,
     week,
     dayOfWeek: days % 7,
     trimester: week < 13 ? 1 : week < 27 ? 2 : 3,
-    daysLeft: 280 - days,
+    daysLeft: 280 + shift - days,
   };
 }
 
@@ -459,7 +465,7 @@ export function paintRange(state, from, to) {
   const { avgCycle, avgPeriod, window, cycleStart, lutealDays } = state;
   // Kuo mažesnis skaičius, tuo svarbiau. Faktas visada virš prognozės.
   const RANK = {
-    'period': 0, 'ovulation': 1, 'fertile': 2, 'period-window': 3,
+    'period': 0, 'ovulation': 1, 'fertile': 2, 'fertile-wide': 3, 'period-window': 4,
   };
   const rank = (kind, predicted) => RANK[kind] + (predicted ? 10 : 0);
   const mark = (d, kind, predicted) => {
@@ -491,7 +497,10 @@ export function paintRange(state, from, to) {
     for (let k = 0; k < avgPeriod; k++) mark(addDays(next, k), 'period', true);
 
     const ov = addDays(next, Math.round(P.ovulationDay(avgCycle).day) - 1);
-    for (let k = -5; k <= 1; k++) mark(addDays(ov, k), 'fertile', true);
+    const ovSd = P.ovulationUncertainty(state.sigma || 3);
+    const spread = Math.min(9, Math.round(1.28 * ovSd));
+    for (let k = -5 - spread; k <= spread; k++) mark(addDays(ov, k), 'fertile-wide', true);
+    for (let k = -5; k <= 0; k++) mark(addDays(ov, k), 'fertile', true);
     mark(ov, 'ovulation', true);
 
     start = next;
@@ -500,7 +509,8 @@ export function paintRange(state, from, to) {
   // dabartinio ciklo vaisingas langas — faktas, jei kūnas patvirtino
   if (state.fertile) {
     const pred = !state.ovulation?.confirmed;
-    for (const d of rangeDays(state.fertile.from, state.fertile.to)) mark(d, 'fertile', pred);
+    for (const d of rangeDays(state.fertile.from, state.fertile.to)) mark(d, 'fertile-wide', pred);
+    for (const d of rangeDays(state.fertile.core.from, state.fertile.core.to)) mark(d, 'fertile', pred);
     if (state.ovulation) mark(state.ovulation.date, 'ovulation', pred);
   }
   return out;
@@ -551,14 +561,27 @@ export function cycleHistory(state) {
   }));
 }
 
-/** Reguliarumo vertinimas žmonių kalba. */
+/**
+ * Reguliarumas. Matas — median(CLD), gretimų ciklų skirtumų mediana: būtent jį
+ * naudoja publikuoti modeliai, ir jis nemeluoja, kai ciklai nuosekliai slenka
+ * (max−min tokiu atveju rodytų netaisyklingumą ten, kur jo nėra).
+ *
+ * Ribos iš populiacijos duomenų (Grieger 2020, 1,09 mln. moterų):
+ *   25 % moterų svyruoja 0–1,5 d.; 69 % — mažiau nei 6 d.; 31 % — 6 d. ir daugiau.
+ */
 export function regularity(state) {
-  const n = state.validCycles.length;
-  if (n < 3) return { level: 'unknown', spread: null, n };
-  const lens = state.validCycles.slice(-HISTORY).map(c => c.length);
-  const spread = Math.max(...lens) - Math.min(...lens);
-  const level = spread <= 4 ? 'regular' : spread <= 9 ? 'variable' : 'irregular';
-  return { level, spread, n, min: Math.min(...lens), max: Math.max(...lens) };
+  const lengths = state.validCycles.map(c => c.length);
+  const n = lengths.length;
+  if (n < 3) return { level: 'unknown', spread: null, n, percentile: null };
+  const c = P.cld(lengths.slice(-24));
+  const level = c <= 1.5 ? 'very_regular' : c < 3.5 ? 'regular' : c < 6 ? 'variable' : 'irregular';
+  // Kiek moterų svyruoja labiau už ją — grubus, bet sąžiningas palyginimas.
+  const percentile = c <= 1.5 ? 75 : c < 3.5 ? 55 : c < 6 ? 31 : 15;
+  return {
+    level, n, cld: c, percentile,
+    spread: Math.max(...lengths.slice(-24)) - Math.min(...lengths.slice(-24)),
+    min: Math.min(...lengths.slice(-24)), max: Math.max(...lengths.slice(-24)),
+  };
 }
 
 /**
